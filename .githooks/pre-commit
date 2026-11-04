@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[pre-commit] Validando versão e frontend..."
+npm run ci:version
+npm run typecheck
+
+echo "[pre-commit] Formatando Rust..."
+npm run fmt:rust
+
+echo "[pre-commit] Conferindo rustfmt..."
+npm run fmt:rust:check

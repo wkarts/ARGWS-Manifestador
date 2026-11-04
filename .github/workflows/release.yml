@@ -1,0 +1,860 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag existente para retomar uma release incompleta (ex.: v1.2.1)"
+        required: false
+        type: string
+      allow_partial_release:
+        description: "Publicar mesmo com alvos ausentes; após publicar, os ausentes exigirão nova versão"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: "24"
+
+jobs:
+  prepare-release:
+    name: Resolve version and immutable tag
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      published: ${{ steps.resolve.outputs.published }}
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      name: ${{ steps.resolve.outputs.name }}
+      notes_b64: ${{ steps.resolve.outputs.notes_b64 }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - name: Checkout approved commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ inputs.release_tag || github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install release dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Setup Rust for the reproducible lockfile
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Require immutable Cargo lockfile
+        run: >-
+          cargo metadata --manifest-path src-tauri/Cargo.toml
+          --locked --format-version 1 > /dev/null
+
+      - name: Resolve semantic release or resume tag
+        id: resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${REQUESTED_TAG}" ]]; then
+            node ./scripts/release/run-semantic-release.mjs
+            exit 0
+          fi
+
+          if [[ ! "${REQUESTED_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag inválida: ${REQUESTED_TAG}" >&2
+            exit 1
+          fi
+
+          git fetch --force --tags origin "${REQUESTED_TAG}"
+          node ./scripts/ci/check-version-sync.mjs --tag "${REQUESTED_TAG}"
+
+          if release_json="$(gh release view "${REQUESTED_TAG}" --json isDraft 2>/dev/null)"; then
+            if [[ "$(jq -r '.isDraft' <<<"${release_json}")" != "true" ]]; then
+              echo "A release ${REQUESTED_TAG} já está publicada e não será reaberta." >&2
+              exit 1
+            fi
+          fi
+
+          version="$(tr -d '\r\n' < VERSION)"
+          product_name="$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json', 'utf8')).productName")"
+          notes="Retomada idempotente da release ${REQUESTED_TAG}."
+
+          {
+            echo "published=true"
+            echo "version=${version}"
+            echo "tag=${REQUESTED_TAG}"
+            echo "name=${product_name} v${version}"
+            echo "notes_b64=$(printf '%s' "${notes}" | base64 -w0)"
+            if [[ "${version}" == *-* ]]; then
+              echo "prerelease=true"
+            else
+              echo "prerelease=false"
+            fi
+          } >> "${GITHUB_OUTPUT}"
+
+  desktop:
+    name: ${{ matrix.label }}
+    needs: prepare-release
+    if: needs.prepare-release.outputs.published == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            runner: windows-2025
+            arch: x64
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+            artifact: desktop-windows-x64
+          - label: Windows x86
+            runner: windows-2025
+            arch: x86
+            target: i686-pc-windows-msvc
+            bundles: nsis,msi
+            artifact: desktop-windows-x86
+          - label: Linux x64
+            runner: ubuntu-24.04
+            arch: x64
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+            artifact: desktop-linux-x64
+          - label: Linux ARM64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+            bundles: deb,appimage
+            artifact: desktop-linux-arm64
+          - label: macOS Apple Silicon
+            runner: macos-15
+            arch: arm64
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+            artifact: desktop-macos-arm64
+          - label: macOS Intel
+            runner: macos-15-intel
+            arch: x64
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+            artifact: desktop-macos-x64
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+    steps:
+      - name: Checkout exact release tag
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            file \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Validate tag and project version
+        run: node ./scripts/ci/check-version-sync.mjs --tag "${{ needs.prepare-release.outputs.tag }}"
+
+      - name: Setup Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Configure short Cargo target on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP "tauri-target"
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          "CARGO_TARGET_DIR=$target" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "CARGO_TARGET_DIR=$target"
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: release-${{ matrix.target }}
+          cache-on-failure: true
+
+      - name: Import optional Windows signing certificate
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path certificate -Force | Out-Null
+          Set-Content -Path certificate\certificate.txt -Value $env:WINDOWS_CERTIFICATE
+          certutil -decode certificate\certificate.txt certificate\certificate.pfx
+          Remove-Item certificate\certificate.txt
+          $securePassword = ConvertTo-SecureString `
+            -String $env:WINDOWS_CERTIFICATE_PASSWORD `
+            -Force `
+            -AsPlainText
+          $certificate = Import-PfxCertificate `
+            -FilePath certificate\certificate.pfx `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password $securePassword
+          "WINDOWS_CERT_THUMBPRINT=$($certificate.Thumbprint)" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install frontend dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Validate the immutable Cargo lockfile
+        shell: bash
+        run: >-
+          cargo metadata --manifest-path src-tauri/Cargo.toml
+          --locked --format-version 1 > /dev/null
+
+      - name: Build Tauri bundles
+        id: tauri
+        uses: tauri-apps/tauri-action@v1
+        with:
+          tauriScript: npm run tauri
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Package macOS application bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_dir="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          app_path="$(find "${bundle_dir}" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          if [[ -z "${app_path}" ]]; then
+            echo "Pacote .app não encontrado em ${bundle_dir}." >&2
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent \
+            "${app_path}" \
+            "${app_path}.zip"
+
+      - name: Store desktop bundles
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.artifact }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/**
+            ${{ runner.temp }}/tauri-target/${{ matrix.target }}/release/bundle/**
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Record desktop build status
+        if: always()
+        shell: bash
+        env:
+          BUILD_STATUS: ${{ job.status }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node ./scripts/release/write-build-status.mjs
+          --output release-status/${{ matrix.artifact }}.status.json
+          --id ${{ matrix.artifact }}
+          --label '${{ matrix.label }}'
+          --platform desktop
+          --arch '${{ matrix.arch }}'
+          --target '${{ matrix.target }}'
+          --artifact release-${{ matrix.artifact }}
+
+      - name: Store desktop build status
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-status-${{ matrix.artifact }}
+          path: release-status/${{ matrix.artifact }}.status.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove temporary Windows certificate
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERT_THUMBPRINT)) {
+            $certificatePath = "Cert:\CurrentUser\My\$($env:WINDOWS_CERT_THUMBPRINT)"
+            if (Test-Path $certificatePath) {
+              Remove-Item $certificatePath -Force
+            }
+          }
+          if (Test-Path certificate) {
+            Remove-Item certificate -Recurse -Force
+          }
+
+  web-pwa:
+    name: Web/PWA
+    needs: prepare-release
+    if: needs.prepare-release.outputs.published == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact release tag
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Validate version
+        run: npm run ci:version
+
+      - name: Build Web/PWA
+        run: npm run build:web
+
+      - name: Package Web/PWA
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_name="$(node -p "require('./package.json').name")"
+          version="$(tr -d '\r\n' < VERSION)"
+          mkdir -p release/web
+          tar -C dist -czf "release/web/${package_name}-v${version}-web-pwa.tar.gz" .
+
+      - name: Store Web/PWA package
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-web-pwa
+          path: release/web/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Record Web/PWA build status
+        if: always()
+        env:
+          BUILD_STATUS: ${{ job.status }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node ./scripts/release/write-build-status.mjs
+          --output release-status/web-pwa.status.json
+          --id web-pwa
+          --label Web/PWA
+          --platform web
+          --arch universal
+          --target web
+          --artifact release-web-pwa
+
+      - name: Store Web/PWA build status
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-status-web-pwa
+          path: release-status/web-pwa.status.json
+          if-no-files-found: error
+          retention-days: 14
+
+  cloudpanel:
+    name: CloudPanel Linux ${{ matrix.arch }}
+    needs: prepare-release
+    if: needs.prepare-release.outputs.published == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-unknown-linux-gnu
+          - arch: x86
+            target: i686-unknown-linux-gnu
+    steps:
+      - name: Checkout exact release tag
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: cloudpanel-${{ matrix.target }}
+          cache-on-failure: true
+
+      - name: Install CloudPanel build dependencies
+        run: bash ./scripts/linux/install-cloudpanel-build-deps.sh --${{ matrix.arch }}
+
+      - name: Validate the immutable Cargo lockfile
+        run: >-
+          cargo metadata --manifest-path src-tauri/Cargo.toml
+          --locked --format-version 1 > /dev/null
+
+      - name: Build CloudPanel package
+        run: bash ./scripts/linux/build-cloudpanel-release.sh --${{ matrix.arch }}
+
+      - name: Store CloudPanel package
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-cloudpanel-linux-${{ matrix.arch }}
+          path: |
+            release/cloudpanel/*.tar.gz
+            release/cloudpanel/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Record CloudPanel build status
+        if: always()
+        env:
+          BUILD_STATUS: ${{ job.status }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node ./scripts/release/write-build-status.mjs
+          --output release-status/cloudpanel-linux-${{ matrix.arch }}.status.json
+          --id cloudpanel-linux-${{ matrix.arch }}
+          --label 'CloudPanel Linux ${{ matrix.arch }}'
+          --platform cloudpanel-linux
+          --arch ${{ matrix.arch }}
+          --target ${{ matrix.target }}
+          --artifact release-cloudpanel-linux-${{ matrix.arch }}
+
+      - name: Store CloudPanel build status
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-status-cloudpanel-linux-${{ matrix.arch }}
+          path: release-status/cloudpanel-linux-${{ matrix.arch }}.status.json
+          if-no-files-found: error
+          retention-days: 14
+
+
+  android:
+    name: ${{ matrix.label }}
+    needs: prepare-release
+    if: needs.prepare-release.outputs.published == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Android APK ARM64 instalável
+            id: android-arm64-apk
+            kind: apk
+            build_args: --target aarch64 --apk --debug --ci
+            arch: arm64
+            target: aarch64-linux-android
+            artifact: release-android-arm64-apk
+            extension: apk
+          - label: Android AAB ARM64 não assinado
+            id: android-aab
+            kind: aab
+            build_args: --target aarch64 --aab --ci
+            arch: arm64
+            target: android-aab
+            artifact: release-android-aab
+            extension: aab
+    env:
+      ANDROID_API_LEVEL: "35"
+      ANDROID_BUILD_TOOLS: "35.0.0"
+      ANDROID_NDK_VERSION: "27.2.12479018"
+    steps:
+      - name: Checkout exact release tag
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK and NDK components
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+          {
+            echo "ANDROID_NDK_HOME=${sdk_root}/ndk/${ANDROID_NDK_VERSION}"
+            echo "NDK_HOME=${sdk_root}/ndk/${ANDROID_NDK_VERSION}"
+          } >> "${GITHUB_ENV}"
+          {
+            echo "${sdk_root}/platform-tools"
+            echo "${sdk_root}/build-tools/${ANDROID_BUILD_TOOLS}"
+          } >> "${GITHUB_PATH}"
+
+      - name: Setup Rust Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: release-mobile-android-${{ matrix.kind }}
+          cache-on-failure: true
+
+      - name: Install frontend dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Validate tag, version and Cargo lockfile
+        shell: bash
+        run: |
+          node ./scripts/ci/check-version-sync.mjs --tag "${{ needs.prepare-release.outputs.tag }}"
+          cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
+
+      - name: Build local Vue frontend and Tauri resources
+        run: npm run build:web:tauri
+
+      - name: Initialize Android project idempotently
+        run: npm run tauri:android:init
+
+      - name: Build ${{ matrix.kind }} with Tauri Android
+        run: npm run tauri -- android build --features mobile ${{ matrix.build_args }}
+
+      - name: Collect and validate Android artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_name="$(node -p "require('./package.json').name")"
+          version="$(tr -d '\r\n' < VERSION)"
+          node ./scripts/mobile/collect-android-artifact.mjs \
+            --kind "${{ matrix.kind }}" \
+            --input src-tauri/gen/android/app/build/outputs \
+            --output release/android \
+            --product "${package_name}" \
+            --version "${version}"
+          artifact_path="$(find release/android -maxdepth 1 -type f -name '*.${{ matrix.extension }}' -print -quit)"
+          unzip -tq "${artifact_path}" >/dev/null
+          if [[ "${{ matrix.kind }}" == "apk" ]]; then
+            apksigner verify --verbose "${artifact_path}"
+          fi
+
+      - name: Store Android release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/android/*.${{ matrix.extension }}
+            release/android/*.${{ matrix.extension }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Record Android build status
+        if: always()
+        env:
+          BUILD_STATUS: ${{ job.status }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node ./scripts/release/write-build-status.mjs
+          --output release-status/${{ matrix.id }}.status.json
+          --id ${{ matrix.id }}
+          --label '${{ matrix.label }}'
+          --platform android
+          --arch ${{ matrix.arch }}
+          --target ${{ matrix.target }}
+          --artifact ${{ matrix.artifact }}
+
+      - name: Store Android build status
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-status-${{ matrix.id }}
+          path: release-status/${{ matrix.id }}.status.json
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: iOS ARM64 IPA não assinado
+    needs: prepare-release
+    if: needs.prepare-release.outputs.published == 'true'
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact release tag
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Rust for physical iOS device
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: release-mobile-ios-aarch64
+          cache-on-failure: true
+
+      - name: Validate Xcode and CocoaPods
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          if ! command -v pod >/dev/null 2>&1; then
+            brew install cocoapods
+          fi
+          pod --version
+
+      - name: Install frontend dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Validate tag, version and Cargo lockfile
+        shell: bash
+        run: |
+          node ./scripts/ci/check-version-sync.mjs --tag "${{ needs.prepare-release.outputs.tag }}"
+          cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
+
+      - name: Build local Vue frontend and Tauri resources
+        run: npm run build:web:tauri
+
+      - name: Build unsigned iOS application bundle
+        run: bash ./scripts/mobile/build-ios-unsigned.sh release/ios-app
+
+      - name: Package real unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="$(cat release/ios-app/app-path.txt)"
+          package_name="$(node -p "require('./package.json').name")"
+          version="$(tr -d '\r\n' < VERSION)"
+          mkdir -p release/ios
+          bash ./scripts/release/package-ios-unsigned.sh \
+            "${app_path}" \
+            "release/ios/${package_name}-ios-arm64-v${version}-unsigned.ipa"
+
+      - name: Store unsigned iOS release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-ios-arm64-unsigned-ipa
+          path: |
+            release/ios/*-ios-arm64-v*-unsigned.ipa
+            release/ios/*-ios-arm64-v*-unsigned.ipa.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Record iOS build status
+        if: always()
+        env:
+          BUILD_STATUS: ${{ job.status }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node ./scripts/release/write-build-status.mjs
+          --output release-status/ios-arm64-unsigned-ipa.status.json
+          --id ios-arm64-unsigned-ipa
+          --label 'iOS ARM64 IPA não assinado'
+          --platform ios
+          --arch arm64
+          --target aarch64-apple-ios
+          --artifact release-ios-arm64-unsigned-ipa
+
+      - name: Store iOS build status
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-status-ios-arm64-unsigned-ipa
+          path: release-status/ios-arm64-unsigned-ipa.status.json
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish coordinated GitHub Release
+    needs:
+      - prepare-release
+      - desktop
+      - web-pwa
+      - cloudpanel
+      - android
+      - ios
+    if: >-
+      always() &&
+      needs.prepare-release.result == 'success' &&
+      needs.prepare-release.outputs.published == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+      RELEASE_NAME: ${{ needs.prepare-release.outputs.name }}
+      RELEASE_NOTES_B64: ${{ needs.prepare-release.outputs.notes_b64 }}
+      RELEASE_PRERELEASE: ${{ needs.prepare-release.outputs.prerelease }}
+    steps:
+      - name: Checkout exact release tag
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Download current-run artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: artifacts
+
+      - name: Collect, rename and checksum assets
+        run: >-
+          node ./scripts/release/collect-release-assets.mjs
+          --input artifacts
+          --output release-assets
+          --version "${{ needs.prepare-release.outputs.version }}"
+
+      - name: Evaluate publication policy
+        id: policy
+        env:
+          ALLOW_PARTIAL_RELEASE: ${{ inputs.allow_partial_release || false }}
+        run: >-
+          node ./scripts/release/enforce-release-policy.mjs
+          --status release-assets/RELEASE-STATUS.json
+          --allow-partial "${ALLOW_PARTIAL_RELEASE}"
+          --output "${GITHUB_OUTPUT}"
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "${RELEASE_NOTES_B64}" | base64 --decode > release-notes.md
+          printf '\n' >> release-notes.md
+          cat release-assets/RELEASE-STATUS.md >> release-notes.md
+
+      - name: Create or reuse one draft release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if release_json="$(gh release view "${RELEASE_TAG}" --json isDraft 2>/dev/null)"; then
+            if [[ "$(jq -r '.isDraft' <<<"${release_json}")" != "true" ]]; then
+              echo "A release ${RELEASE_TAG} já está publicada e não será reaberta." >&2
+              exit 1
+            fi
+            gh release edit "${RELEASE_TAG}" \
+              --title "${RELEASE_NAME}" \
+              --notes-file release-notes.md
+          else
+            create_args=(
+              "${RELEASE_TAG}"
+              --draft
+              --verify-tag
+              --title "${RELEASE_NAME}"
+              --notes-file release-notes.md
+            )
+            if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
+              create_args+=(--prerelease)
+            fi
+            gh release create "${create_args[@]}"
+          fi
+
+      - name: Upload assets idempotently
+        run: >-
+          node ./scripts/release/upload-release-assets.mjs
+          --tag "${RELEASE_TAG}"
+          --directory release-assets
+
+      - name: Publish complete or explicitly authorized draft
+        if: steps.policy.outputs.publish == 'true'
+        run: gh release edit "${RELEASE_TAG}" --draft=false
+
+      - name: Release summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Release ${RELEASE_TAG}"
+            echo
+            echo "Decisão: ${{ steps.policy.outputs.decision }}"
+            echo
+            echo "Artefatos preparados:"
+            echo
+            sed 's/^/- `/' release-assets/SHA256SUMS.txt | sed 's/$/`/'
+            echo
+            cat release-assets/RELEASE-STATUS.md
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Keep incomplete release as resumable draft
+        if: steps.policy.outputs.publish != 'true'
+        shell: bash
+        run: |
+          echo "Matriz incompleta: a release permaneceu em draft para retomada segura." >&2
+          echo "Corrija os alvos e retome a mesma tag, ou use allow_partial_release conscientemente." >&2
+          exit 1

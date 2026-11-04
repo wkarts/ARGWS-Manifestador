@@ -1,0 +1,53 @@
+[package]
+name = "manifestador_nfe"
+version = "0.2.0"
+description = "Aplicação Tauri/Rust para distribuição, manifestação, download e organização de NF-e destinadas"
+authors = ["Wallace Kleiton <wwsoftwares@gmail.com>"]
+edition = "2021"
+
+[lib]
+name = "manifestador_nfe_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }
+
+[features]
+default = []
+desktop = ["dep:tauri", "dep:tauri-build", "dep:native-tls", "tauri/wry", "tauri/tray-icon", "tauri/image-png", "tauri/custom-protocol"]
+mobile = ["dep:tauri", "dep:tauri-build", "tauri/wry", "tauri/custom-protocol"]
+mysql-db = ["dep:mysql"]
+postgres-db = ["dep:postgres"]
+
+[dependencies]
+tauri = { version = "2", default-features = false, optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+dirs = "5"
+argon2 = "0.5"
+rand = "0.8"
+
+sha2 = "0.10"
+
+base64 = "0.22"
+
+generic-license-tauri = { path = "./generic-license-tauri" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+native-tls = { version = "0.2", optional = true }
+quick-xml = "0.41"
+flate2 = "1.1"
+hostname = "0.4"
+hmac = "0.12"
+sha1 = "0.10"
+data-encoding = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.6", features = ["cors"] }
+url = "2"
+futures-util = "0.3"
+
+mysql = { version = "25", optional = true }
+postgres = { version = "0.19", optional = true }

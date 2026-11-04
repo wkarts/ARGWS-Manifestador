@@ -1,0 +1,10 @@
+{
+  "brand": "manifestador-nfe",
+  "appName": "Manifestador NF-e",
+  "productName": "Manifestador NF-e",
+  "identifier": "br.com.wwsoftwares.manifestador-nfe",
+  "publisher": "Manifestador NF-e",
+  "theme": "default-blue",
+  "transparentAssets": true,
+  "version": "0.1.10"
+}

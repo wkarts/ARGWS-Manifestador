@@ -1,0 +1,435 @@
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import AppModal from "../components/AppModal.vue";
+import BasePage from "../components/base/BasePage.vue";
+import { useSessionStore } from "../stores/session";
+import {
+  downloadManifestadorNote,
+  exportManifestadorZip,
+  fetchManifestadorNotes,
+  getManifestadorCompanyConfig,
+  getManifestadorConfig,
+  getManifestadorNote,
+  getManifestadorSummary,
+  importManifestadorXml,
+  listManifestadorNoteLogs,
+  listManifestadorNotes,
+  manifestManifestadorNote,
+  sendManifestadorAccounting,
+  saveManifestadorCompanyConfig,
+  saveManifestadorConfig,
+  testManifestadorProvider,
+  type GenericRecord,
+} from "../services/crud";
+import { showSplashInfo, showSplashSuccess, showSplashWarning } from "../services/splash";
+import { openReportPreview } from "../print/reportWindow";
+
+const session = useSessionStore();
+const loading = ref(false);
+const saving = ref(false);
+const error = ref("");
+const search = ref("");
+const statusFilter = ref("");
+const rows = ref<GenericRecord[]>([]);
+const summary = ref<GenericRecord>({ total: 0, downloaded: 0, manifested: 0, pending: 0 });
+const importModalOpen = ref(false);
+const configModalOpen = ref(false);
+const manifestModalOpen = ref(false);
+const logsModalOpen = ref(false);
+const accountingModalOpen = ref(false);
+const xmlDraft = ref("");
+const selectedNote = ref<GenericRecord | null>(null);
+const logs = ref<GenericRecord[]>([]);
+const accountingForm = reactive({ dataInicial: "", dataFinal: "", destinatario: "" });
+
+function defaultConfig() {
+  return {
+    verificar_automatico: true,
+    download_automatico: true,
+    timer_minutos: 60,
+    smtp_host: "",
+    smtp_conta: "",
+    smtp_remetente: "",
+    smtp_email: "",
+    smtp_password: "",
+    smtp_password_configured: false,
+    smtp_porta: 587,
+    sefaz_endpoint: "",
+    sefaz_service_url: "",
+    sefaz_timeout_seconds: 60,
+  };
+}
+
+function defaultCompanyConfig() {
+  return {
+    certificado_path: "",
+    certificado_password: "",
+    uf: "",
+    xml_path: "",
+    numero_serie: "",
+    copia_xml_path: "",
+    resposta_path: "",
+    ambiente: "production",
+    nsu: "0",
+    data_manifestacao: "",
+    certificado_password_configured: false,
+  };
+}
+
+const config = reactive(defaultConfig());
+const companyConfig = reactive(defaultCompanyConfig());
+const manifestForm = reactive({ evento: "ciencia", justificativa: "" });
+const currentCompanyId = computed(() => session.activeCompanyId ? Number(session.activeCompanyId) : null);
+const canManage = computed(() => session.can("manifestador:manage"));
+const providerConfigured = computed(() => Boolean(String(config.sefaz_endpoint || "").trim() || String(config.sefaz_service_url || "").trim() || (String(companyConfig.certificado_path || "").trim() && String(companyConfig.uf || "").trim())));
+
+function text(value: unknown, fallback = "") {
+  return value == null ? fallback : String(value);
+}
+
+function number(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function money(value: unknown) {
+  return number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function dateTime(value: unknown) {
+  const raw = text(value);
+  return raw ? raw.replace("T", " ").slice(0, 19) : "-";
+}
+
+function isoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultAccountingPeriod() {
+  const now = new Date();
+  const firstCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastPreviousMonth = new Date(firstCurrentMonth.getTime() - 24 * 60 * 60 * 1000);
+  const firstPreviousMonth = new Date(lastPreviousMonth.getFullYear(), lastPreviousMonth.getMonth(), 1);
+  accountingForm.dataInicial = isoDate(firstPreviousMonth);
+  accountingForm.dataFinal = isoDate(lastPreviousMonth);
+  accountingForm.destinatario = "";
+}
+
+function escapeHtml(value: unknown) {
+  return text(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function statusLabel(row: GenericRecord) {
+  const manifestation = text(row.manifestacao, "N");
+  if (manifestation === "0") return "Confirmada";
+  if (manifestation === "1") return "Ciência";
+  if (manifestation === "2") return "Não realizada";
+  if (manifestation === "3") return "Desconhecida";
+  return text(row.situacao, "Recebida");
+}
+
+function resetConfig() {
+  Object.assign(config, defaultConfig());
+}
+
+function resetCompanyConfig() {
+  Object.assign(companyConfig, defaultCompanyConfig());
+}
+
+async function load() {
+  if (!session.sessionToken) return;
+  loading.value = true;
+  error.value = "";
+  try {
+    const filters: GenericRecord = { search: search.value, status: statusFilter.value };
+    if (currentCompanyId.value) filters.empresa_id = currentCompanyId.value;
+    const [list, stats, globalConfig] = await Promise.all([
+      listManifestadorNotes(session.sessionToken, filters),
+      getManifestadorSummary(session.sessionToken, currentCompanyId.value),
+      getManifestadorConfig(session.sessionToken),
+    ]);
+    rows.value = list;
+    summary.value = stats;
+    resetConfig();
+    Object.assign(config, globalConfig, { smtp_password: "" });
+    if (currentCompanyId.value) {
+      const fiscalConfig = await getManifestadorCompanyConfig(session.sessionToken, currentCompanyId.value);
+      resetCompanyConfig();
+      Object.assign(companyConfig, fiscalConfig, { certificado_password: "" });
+    }
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : "Falha ao carregar o Manifestador.";
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function refresh() {
+  await load();
+  showSplashInfo("Dados do Manifestador atualizados.");
+}
+
+async function obtainNotes() {
+  if (!session.sessionToken || !currentCompanyId.value) {
+    showSplashWarning("Selecione uma empresa ativa antes de consultar NF-e.");
+    return;
+  }
+  saving.value = true;
+  try {
+    const result = await fetchManifestadorNotes(session.sessionToken, currentCompanyId.value);
+    if (result.ok === false) showSplashWarning(text(result.message));
+    else showSplashSuccess(text(result.message, "Consulta concluída."));
+    await load();
+  } finally {
+    saving.value = false;
+  }
+}
+
+function openImportModal() {
+  xmlDraft.value = "";
+  importModalOpen.value = true;
+}
+
+async function readXmlFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  xmlDraft.value = await file.text();
+}
+
+async function importXml() {
+  if (!session.sessionToken || !currentCompanyId.value || !xmlDraft.value.trim()) {
+    showSplashWarning("Selecione uma empresa e informe um XML completo de NF-e.");
+    return;
+  }
+  saving.value = true;
+  try {
+    await importManifestadorXml(session.sessionToken, currentCompanyId.value, xmlDraft.value);
+    importModalOpen.value = false;
+    showSplashSuccess("XML importado e seus itens/histórico localizados.");
+    await load();
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function exportZip() {
+  if (!session.sessionToken) return;
+  const result = await exportManifestadorZip(session.sessionToken, currentCompanyId.value, { status: statusFilter.value });
+  showSplashSuccess(`${text(result.message, "ZIP gerado.")} Caminho: ${text(result.path)}`);
+}
+
+async function download(row: GenericRecord) {
+  if (!session.sessionToken || !currentCompanyId.value) return;
+  const result = await downloadManifestadorNote(session.sessionToken, currentCompanyId.value, number(row.id));
+  showSplashSuccess(text(result.message, `XML salvo em ${text(result.path)}`));
+  await load();
+}
+
+async function preview(row: GenericRecord) {
+  if (!session.sessionToken || !currentCompanyId.value) return;
+  saving.value = true;
+  try {
+    const note = await getManifestadorNote(session.sessionToken, currentCompanyId.value, number(row.id));
+    const items = (Array.isArray(note.items) ? note.items : []) as GenericRecord[];
+    const itemRows = items.map((item) => `<tr><td>${escapeHtml(item.item)}</td><td>${escapeHtml(item.cprod)}</td><td>${escapeHtml(item.xprod)}</td><td>${escapeHtml(item.ucom)}</td><td>${number(item.qcom).toLocaleString("pt-BR")}</td><td>${money(item.vuntrib)}</td><td>${money(number(item.qcom) * number(item.vuntrib))}</td></tr>`).join("");
+    const html = `<article class="danfe"><div class="danfe-head"><div><strong>Manifestador NF-e</strong><h1>DANFE — Documento Auxiliar da NF-e</h1></div><div><strong>NF-e ${escapeHtml(note.numero || "-")}</strong><br>Série ${escapeHtml(note.serie || "-")}<br>Chave ${escapeHtml(note.chave || "-")}</div></div><div class="danfe-grid"><div><b>Emitente</b><br>${escapeHtml(note.nome || "-")}<br>CNPJ/CPF: ${escapeHtml(note.cnpj || "-")}<br>IE: ${escapeHtml(note.ie || "-")}</div><div><b>Emissão</b><br>${escapeHtml(dateTime(note.emissao))}<br><b>Protocolo</b><br>${escapeHtml(note.protocolo || "-")}</div></div><table><thead><tr><th>Item</th><th>Código</th><th>Descrição</th><th>UN</th><th>Qtd.</th><th>Vlr. unit.</th><th>Total</th></tr></thead><tbody>${itemRows || `<tr><td colspan="7">Nenhum item detalhado disponível no XML.</td></tr>`}</tbody></table><div class="danfe-total"><strong>Valor dos produtos: ${money(note.total_produtos)}</strong><strong>Valor da NF-e: ${money(note.valor)}</strong></div></article><style>.danfe{font-family:Arial,sans-serif;color:#172033}.danfe-head,.danfe-grid,.danfe-total{display:flex;justify-content:space-between;gap:24px;border:1px solid #172033;padding:14px;margin-bottom:10px}.danfe-grid>div{flex:1}.danfe h1{font-size:18px;margin:8px 0}.danfe table{width:100%;border-collapse:collapse;font-size:12px}.danfe th,.danfe td{border:1px solid #64748b;padding:6px;text-align:left}.danfe-total{justify-content:flex-end}</style>`;
+    await openReportPreview(html, `DANFE ${text(note.chave, "NF-e")}`);
+  } catch (err) {
+    showSplashWarning(err instanceof Error ? err.message : "Não foi possível abrir o DANFE.");
+  } finally {
+    saving.value = false;
+  }
+}
+
+function openManifest(row: GenericRecord) {
+  selectedNote.value = row;
+  manifestForm.evento = "ciencia";
+  manifestForm.justificativa = "";
+  manifestModalOpen.value = true;
+}
+
+async function submitManifest() {
+  if (!session.sessionToken || !currentCompanyId.value || !selectedNote.value) return;
+  saving.value = true;
+  try {
+    const result = await manifestManifestadorNote(
+      session.sessionToken,
+      currentCompanyId.value,
+      number(selectedNote.value.id),
+      manifestForm.evento,
+      manifestForm.justificativa,
+    );
+    manifestModalOpen.value = false;
+    if (result.warning) showSplashWarning(text(result.warning));
+    else showSplashSuccess(text(result.message, "Manifestação registrada."));
+    await load();
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function openLogs(row: GenericRecord) {
+  if (!session.sessionToken || !currentCompanyId.value) return;
+  selectedNote.value = row;
+  logs.value = await listManifestadorNoteLogs(session.sessionToken, currentCompanyId.value, number(row.id));
+  logsModalOpen.value = true;
+}
+
+async function saveConfigForms() {
+  if (!session.sessionToken || !currentCompanyId.value) return;
+  saving.value = true;
+  try {
+    await saveManifestadorConfig(session.sessionToken, { ...config });
+    await saveManifestadorCompanyConfig(session.sessionToken, currentCompanyId.value, { ...companyConfig });
+    configModalOpen.value = false;
+    showSplashSuccess("Configurações do Manifestador salvas.");
+    await load();
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function testProvider() {
+  if (!session.sessionToken) return;
+  const result = await testManifestadorProvider(session.sessionToken);
+  showSplashInfo(text(result.message, providerConfigured.value ? "Endpoint configurado." : "Endpoint não configurado."));
+}
+
+function openAccountingModal() {
+  defaultAccountingPeriod();
+  accountingModalOpen.value = true;
+}
+
+async function sendAccounting() {
+  if (!session.sessionToken || !currentCompanyId.value) return;
+  if (!accountingForm.dataInicial || !accountingForm.dataFinal || !accountingForm.destinatario.trim()) {
+    showSplashWarning("Informe o período e o e-mail da contabilidade.");
+    return;
+  }
+  saving.value = true;
+  try {
+    const result = await sendManifestadorAccounting(
+      session.sessionToken,
+      currentCompanyId.value,
+      accountingForm.dataInicial,
+      `${accountingForm.dataFinal}T23:59:59`,
+      accountingForm.destinatario.trim(),
+    );
+    accountingModalOpen.value = false;
+    showSplashSuccess(text(result.message, "XMLs enviados à contabilidade."));
+  } catch (err) {
+    showSplashWarning(err instanceof Error ? err.message : "Falha ao enviar XMLs à contabilidade.");
+  } finally {
+    saving.value = false;
+  }
+}
+
+function openConfig() {
+  configModalOpen.value = true;
+}
+
+watch(currentCompanyId, () => { void load(); });
+onMounted(load);
+</script>
+
+<template>
+  <BasePage title="Manifestação de NF-e" subtitle="Distribuição, consulta, manifestação, download e organização de NF-e destinadas." icon="file">
+    <template #actions>
+      <button class="secondary" type="button" @click="openConfig">Configurações</button>
+      <button class="secondary" type="button" :disabled="loading" @click="refresh">Atualizar</button>
+      <button class="primary" type="button" :disabled="saving || !canManage" @click="obtainNotes">Obter notas</button>
+    </template>
+
+    <div v-if="error" class="alert error">{{ error }}</div>
+    <div v-if="!currentCompanyId" class="alert info">Selecione uma empresa ativa no topo para operar o Manifestador.</div>
+
+    <div class="kpis">
+      <div class="kpi"><strong>Total de NF-e</strong><span>{{ summary.total || 0 }}</span></div>
+      <div class="kpi"><strong>Pendentes</strong><span>{{ summary.pending || 0 }}</span></div>
+      <div class="kpi"><strong>Manifestadas</strong><span>{{ summary.manifested || 0 }}</span></div>
+      <div class="kpi"><strong>XML baixado</strong><span>{{ summary.downloaded || 0 }}</span></div>
+    </div>
+
+    <div class="card grid page-gap">
+      <div class="toolbar">
+        <div>
+          <h3>Notas fiscais destinadas</h3>
+          <p class="muted">O isolamento segue a empresa ativa e os vínculos do usuário autenticado.</p>
+        </div>
+        <div class="actions align-end">
+          <div class="field min-field"><label>Buscar</label><input v-model="search" type="search" placeholder="Chave, emitente ou número" @keyup.enter="load" /></div>
+          <div class="field"><label>Situação</label><select v-model="statusFilter" @change="load"><option value="">Todas</option><option value="recebida">Recebida</option><option value="baixada">Baixada</option><option value="manifestada_local">Manifestada</option></select></div>
+          <button class="secondary" type="button" @click="openImportModal">Importar XML</button>
+          <button class="secondary" type="button" :disabled="!canManage || !currentCompanyId" @click="openAccountingModal">Enviar contabilidade</button>
+          <button class="secondary" type="button" :disabled="!canManage" @click="exportZip">Exportar ZIP</button>
+        </div>
+      </div>
+
+      <div v-if="providerConfigured" class="form-hint">Integração SEFAZ configurada. No desktop, a consulta e o download usam o certificado A1/PFX nativamente quando não houver endpoint JSON externo; a operação local continua disponível.</div>
+      <div v-else class="form-hint">Configure o certificado A1/PFX e a UF da empresa para consultar a SEFAZ nativamente, ou informe um endpoint JSON externo compatível. A importação local permanece disponível.</div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>NF-e</th><th>Emitente</th><th>Emissão</th><th>Valor</th><th>Manifestação</th><th>Download</th><th>NSU</th><th>Ações</th></tr></thead>
+          <tbody>
+            <tr v-for="row in rows" :key="number(row.id)">
+              <td><strong>{{ row.numero || "-" }}</strong><div class="muted-row">Série {{ row.serie || "-" }} · {{ row.chave || "sem chave" }}</div></td>
+              <td>{{ row.nome || "-" }}<div class="muted-row">{{ row.cnpj || "-" }}</div></td>
+              <td>{{ dateTime(row.emissao) }}</td>
+              <td>{{ money(row.valor) }}</td>
+              <td><span class="status-pill">{{ statusLabel(row) }}</span></td>
+              <td>{{ Number(row.download) === 1 ? "Sim" : "Não" }}</td>
+              <td>{{ row.nsu || "0" }}</td>
+              <td><div class="compact-actions actions"><button class="secondary" type="button" :disabled="!canManage" @click="preview(row)">DANFE</button><button class="secondary" type="button" :disabled="!canManage" @click="download(row)">XML</button><button class="secondary" type="button" :disabled="!canManage" @click="openManifest(row)">Manifestar</button><button class="secondary" type="button" @click="openLogs(row)">Histórico</button></div></td>
+            </tr>
+            <tr v-if="!rows.length"><td colspan="8" class="empty-cell">{{ loading ? "Carregando notas..." : "Nenhuma NF-e encontrada para a empresa ativa." }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <AppModal :open="importModalOpen" title="Importar XML de NF-e" subtitle="A importação atualiza resumo, itens e histórico local." width="xl" @close="importModalOpen = false">
+      <div class="grid page-gap">
+        <div class="field"><label>Arquivo XML</label><input type="file" accept=".xml,text/xml,application/xml" @change="readXmlFile" /></div>
+        <div class="field"><label>Conteúdo XML</label><textarea v-model="xmlDraft" class="textarea-mono" rows="14" placeholder="Cole aqui o XML completo da NF-e ou selecione um arquivo." /></div>
+        <div class="actions modal-actions-footer"><button class="secondary" type="button" @click="importModalOpen = false">Cancelar</button><button class="primary" type="button" :disabled="saving || !xmlDraft.trim()" @click="importXml">{{ saving ? "Importando..." : "Importar XML" }}</button></div>
+      </div>
+    </AppModal>
+
+    <AppModal :open="configModalOpen" title="Configurações do Manifestador" subtitle="Parâmetros gerais e dados fiscais da empresa ativa." width="xl" @close="configModalOpen = false">
+      <div class="grid page-gap">
+        <div class="grid columns-2 mobile-columns-1">
+          <section class="modal-section-card grid page-gap"><div class="section-title">Consulta SEFAZ e adaptador externo</div><label class="checkbox-inline"><input v-model="config.verificar_automatico" type="checkbox" /> Consultar automaticamente</label><label class="checkbox-inline"><input v-model="config.download_automatico" type="checkbox" /> Baixar XML automaticamente</label><div class="field"><label>Intervalo (minutos)</label><input v-model.number="config.timer_minutos" type="number" min="1" /></div><div class="field"><label>Endpoint JSON externo (opcional)</label><input v-model="config.sefaz_endpoint" type="url" placeholder="https://servidor.local/manifestador" /></div><div class="field"><label>Endpoint SOAP DistribuiçãoDFe (opcional)</label><input v-model="config.sefaz_service_url" type="url" placeholder="Padrão nacional conforme ambiente" /></div><div class="field"><label>Timeout (segundos)</label><input v-model.number="config.sefaz_timeout_seconds" type="number" min="5" max="300" /></div><button class="secondary" type="button" @click="testProvider">Testar endpoint externo</button><div class="form-hint">Sem endpoint JSON, o aplicativo desktop usa o certificado A1/PFX e o endpoint SOAP configurado ou padrão do ambiente.</div></section>
+          <section class="modal-section-card grid page-gap"><div class="section-title">SMTP para contabilidade</div><div class="field"><label>Servidor SMTP</label><input v-model="config.smtp_host" type="text" /></div><div class="grid columns-2 mobile-columns-1"><div class="field"><label>Conta</label><input v-model="config.smtp_conta" type="text" /></div><div class="field"><label>Porta</label><input v-model.number="config.smtp_porta" type="number" min="1" /></div></div><div class="field"><label>Remetente</label><input v-model="config.smtp_remetente" type="text" /></div><div class="field"><label>E-mail de destino</label><input v-model="config.smtp_email" type="email" /></div><div class="field"><label>Senha SMTP {{ config.smtp_password_configured ? "(já configurada; informe somente para substituir)" : "" }}</label><input v-model="config.smtp_password" type="password" autocomplete="new-password" /></div><div class="form-hint">A senha é armazenada protegida localmente. O envio SMTP TLS completo depende do adaptador de correio configurado; a exportação ZIP permanece disponível.</div></section>
+        </div>
+        <section class="modal-section-card grid page-gap"><div class="section-title">Certificado e diretórios da empresa ativa</div><div class="grid columns-2 mobile-columns-1"><div class="field"><label>Caminho do certificado A1/PFX</label><input v-model="companyConfig.certificado_path" type="text" placeholder="C:\\certificados\\empresa.pfx" /></div><div class="field"><label>Senha do certificado {{ companyConfig.certificado_password_configured ? "(já configurada)" : "" }}</label><input v-model="companyConfig.certificado_password" type="password" autocomplete="new-password" /></div><div class="field"><label>UF</label><input v-model="companyConfig.uf" maxlength="2" /></div><div class="field"><label>Ambiente</label><select v-model="companyConfig.ambiente"><option value="production">Produção</option><option value="homologation">Homologação</option></select></div><div class="field"><label>Diretório de XML</label><input v-model="companyConfig.xml_path" type="text" /></div><div class="field"><label>Cópia de XML</label><input v-model="companyConfig.copia_xml_path" type="text" /></div><div class="field"><label>Diretório de respostas</label><input v-model="companyConfig.resposta_path" type="text" /></div><div class="field"><label>Número de série</label><input v-model="companyConfig.numero_serie" type="text" /></div></div><div class="form-hint">O certificado A1/PFX é usado nativamente no desktop para DistribuiçãoDFe e download. A manifestação de eventos continua exigindo assinatura/evento compatível com o provedor configurado; sem provedor, o histórico local é preservado e nada é falsamente enviado.</div></section>
+        <div class="actions modal-actions-footer"><button class="secondary" type="button" @click="configModalOpen = false">Cancelar</button><button class="primary" type="button" :disabled="saving || !canManage" @click="saveConfigForms">{{ saving ? "Salvando..." : "Salvar configurações" }}</button></div>
+      </div>
+    </AppModal>
+
+    <AppModal :open="manifestModalOpen" title="Manifestar NF-e" subtitle="A justificativa é obrigatória para operação não realizada." width="md" @close="manifestModalOpen = false">
+      <div class="grid page-gap"><div class="form-hint">Chave: {{ selectedNote?.chave || "-" }}</div><div class="field"><label>Evento</label><select v-model="manifestForm.evento"><option value="ciencia">Ciência da operação</option><option value="confirmacao">Confirmação da operação</option><option value="desconhecimento">Desconhecimento da operação</option><option value="nao_realizada">Operação não realizada</option></select></div><div v-if="manifestForm.evento === 'nao_realizada'" class="field"><label>Justificativa (mínimo 15 caracteres)</label><textarea v-model="manifestForm.justificativa" rows="5" /></div><div class="form-hint">Sem adaptador externo, o evento será marcado localmente para não perder o histórico. O envio fiscal real requer assinatura e retorno da SEFAZ.</div><div class="actions modal-actions-footer"><button class="secondary" type="button" @click="manifestModalOpen = false">Cancelar</button><button class="primary" type="button" :disabled="saving || !canManage" @click="submitManifest">{{ saving ? "Registrando..." : "Registrar manifestação" }}</button></div></div>
+    </AppModal>
+
+    <AppModal :open="logsModalOpen" title="Histórico da NF-e" subtitle="Auditoria das consultas, importações, downloads e manifestações." width="lg" @close="logsModalOpen = false">
+      <div class="table-wrap"><table><thead><tr><th>Data/hora</th><th>Operação</th><th>Histórico</th></tr></thead><tbody><tr v-for="item in logs" :key="number(item.id)"><td>{{ dateTime(item.datahora) }}</td><td>{{ item.operacao }}</td><td>{{ item.historico }}</td></tr><tr v-if="!logs.length"><td colspan="3" class="empty-cell">Nenhum histórico registrado.</td></tr></tbody></table></div>
+    </AppModal>
+
+    <AppModal :open="accountingModalOpen" title="Enviar XMLs à contabilidade" subtitle="Selecione o período e o destinatário. O ZIP será gerado localmente e enviado pelo SMTP configurado." width="md" @close="accountingModalOpen = false">
+      <div class="grid page-gap">
+        <div class="grid columns-2 mobile-columns-1">
+          <div class="field"><label>Data inicial</label><input v-model="accountingForm.dataInicial" type="date" /></div>
+          <div class="field"><label>Data final</label><input v-model="accountingForm.dataFinal" type="date" /></div>
+        </div>
+        <div class="field"><label>E-mail da contabilidade</label><input v-model="accountingForm.destinatario" type="email" placeholder="contabilidade@empresa.com.br" /></div>
+        <div class="form-hint">O SMTP deve estar configurado em Configurações. O envio usa TLS implícito na porta 465 ou STARTTLS nas demais portas quando anunciado pelo servidor.</div>
+        <div class="actions modal-actions-footer"><button class="secondary" type="button" @click="accountingModalOpen = false">Cancelar</button><button class="primary" type="button" :disabled="saving" @click="sendAccounting">{{ saving ? "Enviando..." : "Gerar e enviar ZIP" }}</button></div>
+      </div>
+    </AppModal>
+  </BasePage>
+</template>
