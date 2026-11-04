@@ -159,6 +159,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Test visual preferences
+        run: npm run test:theme
+
       - name: Build Web/PWA
         run: npm run build:web
 
