@@ -39,7 +39,8 @@ pub struct InternalApiConfig {
 
 impl Default for InternalApiConfig {
     fn default() -> Self {
-        let host = env::var("MANIFESTADOR_NFE_API_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+        let host =
+            env::var("MANIFESTADOR_NFE_API_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
         let port = env::var("MANIFESTADOR_NFE_API_PORT")
             .ok()
             .and_then(|value| value.parse::<u16>().ok())
@@ -54,8 +55,8 @@ impl Default for InternalApiConfig {
         let cors_enabled = env_bool("MANIFESTADOR_NFE_API_CORS", false);
         let docs_public = env_bool("MANIFESTADOR_NFE_API_DOCS_PUBLIC", false);
         let docs_public_local = env_bool("MANIFESTADOR_NFE_API_DOCS_PUBLIC_LOCAL", true);
-        let token_header =
-            env::var("MANIFESTADOR_NFE_API_TOKEN_HEADER").unwrap_or_else(|_| "X-App-Token".to_string());
+        let token_header = env::var("MANIFESTADOR_NFE_API_TOKEN_HEADER")
+            .unwrap_or_else(|_| "X-App-Token".to_string());
         let token = env::var("MANIFESTADOR_NFE_API_TOKEN")
             .ok()
             .filter(|value| !value.trim().is_empty());
@@ -77,8 +78,14 @@ impl Default for InternalApiConfig {
             timeout_ms: env_u64("MANIFESTADOR_NFE_API_TIMEOUT_MS", 8000),
             log_mode: env::var("MANIFESTADOR_NFE_API_LOG_MODE")
                 .unwrap_or_else(|_| "normal".to_string()),
-            open_scalar_after_start: env_bool("MANIFESTADOR_NFE_API_OPEN_SCALAR_AFTER_START", false),
-            restart_on_config_change: env_bool("MANIFESTADOR_NFE_API_RESTART_ON_CONFIG_CHANGE", true),
+            open_scalar_after_start: env_bool(
+                "MANIFESTADOR_NFE_API_OPEN_SCALAR_AFTER_START",
+                false,
+            ),
+            restart_on_config_change: env_bool(
+                "MANIFESTADOR_NFE_API_RESTART_ON_CONFIG_CHANGE",
+                true,
+            ),
             expose_docs,
             docs: InternalApiDocsConfig {
                 enabled: expose_docs,

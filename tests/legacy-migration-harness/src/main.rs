@@ -16,41 +16,11 @@ mod storage_contract;
 #[path = "../../../src-tauri/src/app_state.rs"]
 mod app_state;
 
-mod security {
-    use serde::Serialize;
-
-    #[derive(Debug, Clone, Serialize)]
-    pub struct PasswordPolicy {
-        pub min_length: usize,
-        pub max_length: usize,
-        pub require_letter: bool,
-        pub require_number: bool,
-        pub require_uppercase: bool,
-        pub require_lowercase: bool,
-        pub require_symbol: bool,
-    }
-
-    impl Default for PasswordPolicy {
-        fn default() -> Self {
-            Self {
-                min_length: 8,
-                max_length: 128,
-                require_letter: true,
-                require_number: true,
-                require_uppercase: false,
-                require_lowercase: false,
-                require_symbol: false,
-            }
-        }
-    }
-
-    pub fn hash_password(password: &str) -> Result<String, String> {
-        if password.is_empty() {
-            return Err("Senha de teste vazia.".to_string());
-        }
-        Ok(format!("$migration-harness${password}"))
-    }
-}
+// Exercise the actual fiscal migrations and password implementation.
+#[path = "../../../src-tauri/src/manifestador.rs"]
+mod manifestador;
+#[path = "../../../src-tauri/src/security.rs"]
+mod security;
 
 fn create_legacy_database(path: &Path) -> Result<(), String> {
     let conn = Connection::open(path).map_err(|error| error.to_string())?;
@@ -67,7 +37,11 @@ fn create_legacy_database(path: &Path) -> Result<(), String> {
 
 fn scalar_count(path: &Path, table: &str) -> Result<i64, String> {
     Connection::open(path)
-        .and_then(|conn| conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0)))
+        .and_then(|conn| {
+            conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                row.get(0)
+            })
+        })
         .map_err(|error| error.to_string())
 }
 
@@ -186,7 +160,10 @@ fn test_new_install() -> Result<(), String> {
     let temp = TempDir::new().map_err(|error| error.to_string())?;
     let data_dir = temp.path().join(storage_contract::CURRENT_LOCAL_DATA_DIR);
     let target = storage_contract::sqlite_database_path(&data_dir);
-    env::set_var("MANIFESTADOR_NFE_LEGACY_DB_PATH", temp.path().join("inexistente.db"));
+    env::set_var(
+        "MANIFESTADOR_NFE_LEGACY_DB_PATH",
+        temp.path().join("inexistente.db"),
+    );
     let state = app_state::SharedState::new();
     state.init_with_data_dir(data_dir.clone())?;
 
@@ -260,7 +237,9 @@ fn test_copy_failure_preserves_source() -> Result<(), String> {
     let error = legacy_data::copy_synced(&source, &destination)
         .expect_err("Destino inválido deveria simular falha de espaço/permissão.");
     if !error.contains("espaço") || scalar_count(&source, "usuarios")? != before {
-        return Err("Falha de cópia não preservou origem ou não orientou sobre espaço.".to_string());
+        return Err(
+            "Falha de cópia não preservou origem ou não orientou sobre espaço.".to_string(),
+        );
     }
     Ok(())
 }
@@ -287,7 +266,10 @@ fn test_existing_database_rollback() -> Result<(), String> {
     let temp = TempDir::new().map_err(|error| error.to_string())?;
     let target = storage_contract::sqlite_database_path(temp.path());
     create_legacy_database(&target)?;
-    env::set_var("MANIFESTADOR_NFE_LEGACY_DB_PATH", temp.path().join("inexistente.db"));
+    env::set_var(
+        "MANIFESTADOR_NFE_LEGACY_DB_PATH",
+        temp.path().join("inexistente.db"),
+    );
     let recovery = legacy_data::prepare(temp.path(), &target)?;
     Connection::open(&target)
         .and_then(|conn| conn.execute("DELETE FROM usuarios", params![]))
@@ -320,7 +302,10 @@ fn test_bootstrap_credential_lifecycle() -> Result<(), String> {
     if legacy_file.exists() {
         return Err("Arquivo bootstrap legado não foi removido.".to_string());
     }
-    env::set_var("MANIFESTADOR_NFE_BOOTSTRAP_ADMIN_PASSWORD", "SenhaHeadless123");
+    env::set_var(
+        "MANIFESTADOR_NFE_BOOTSTRAP_ADMIN_PASSWORD",
+        "SenhaHeadless123",
+    );
     let configured = bootstrap::resolve_internal()?;
     env::remove_var("MANIFESTADOR_NFE_BOOTSTRAP_ADMIN_PASSWORD");
     if configured.password != "SenhaHeadless123" || !configured.configured_by_environment {
@@ -388,11 +373,7 @@ fn test_used_target_credential_is_not_overwritten() -> Result<(), String> {
     let target = storage_contract::sqlite_database_path(&data_dir);
     fs::create_dir_all(&data_dir).map_err(|error| error.to_string())?;
     create_legacy_credential_database(&legacy, "hash-legado-antigo", 0)?;
-    create_affected_target_database(
-        &target,
-        "hash-atual-em-uso",
-        Some("2026-08-01T12:00:00Z"),
-    )?;
+    create_affected_target_database(&target, "hash-atual-em-uso", Some("2026-08-01T12:00:00Z"))?;
     write_legacy_migration_marker(&data_dir, &legacy, &target)?;
 
     if legacy_data::restore_rotated_legacy_credential(&data_dir, &target)? {
@@ -477,9 +458,7 @@ fn test_unused_124_bootstrap_is_replaced_by_legacy_database() -> Result<(), Stri
         .is_file()
         || current_dir.join(".bootstrap-admin.local").exists()
     {
-        return Err(
-            "Migração não registrou conclusão ou manteve bootstrap obsoleto.".to_string(),
-        );
+        return Err("Migração não registrou conclusão ou manteve bootstrap obsoleto.".to_string());
     }
     Ok(())
 }
@@ -546,8 +525,7 @@ fn test_explicit_legacy_database_is_migrated_to_current_contract() -> Result<(),
     let recovery = legacy_data::prepare(&current_dir, &current_db)?
         .ok_or_else(|| "Base anterior à 1.5 não foi detectada.".to_string())?;
     legacy_data::finalize(&current_dir, &current_db, Some(&recovery))?;
-    if scalar_count(&current_db, "clientes")? != 1 || scalar_count(&legacy_db, "clientes")? != 1
-    {
+    if scalar_count(&current_db, "clientes")? != 1 || scalar_count(&legacy_db, "clientes")? != 1 {
         return Err("Migração explícita não preservou origem e contagens.".to_string());
     }
     Ok(())
@@ -606,7 +584,9 @@ fn test_arbitrary_target_is_never_replaced() -> Result<(), String> {
     env::set_var("MANIFESTADOR_NFE_LEGACY_DB_PATH", &legacy);
     let _ = legacy_data::prepare(&data, &target)?;
     if scalar_count(&target, "dados_reais")? != 1 {
-        return Err("Banco canônico arbitrário foi classificado como bootstrap substituível.".to_string());
+        return Err(
+            "Banco canônico arbitrário foi classificado como bootstrap substituível.".to_string(),
+        );
     }
     Ok(())
 }
@@ -636,8 +616,7 @@ fn test_pending_wal_blocks_raw_copy() -> Result<(), String> {
     let source = temp.path().join("legacy.db");
     let destination = temp.path().join("copy.db");
     create_legacy_database(&source)?;
-    fs::write(temp.path().join("legacy.db-wal"), b"pending")
-        .map_err(|error| error.to_string())?;
+    fs::write(temp.path().join("legacy.db-wal"), b"pending").map_err(|error| error.to_string())?;
     let error = legacy_data::copy_synced(&source, &destination)
         .expect_err("WAL pendente deveria bloquear cópia de arquivo bruto.");
     if !error.contains("checkpoint SQLite") {
@@ -684,7 +663,10 @@ fn test_headless_environment_password_updates_provisional_master() -> Result<(),
     let temp = TempDir::new().map_err(|error| error.to_string())?;
     let database = temp.path().join("headless-admin.db");
     create_legacy_credential_database(&database, "hash-provisoria-antiga", 1)?;
-    env::set_var("MANIFESTADOR_NFE_BOOTSTRAP_ADMIN_PASSWORD", "SenhaHeadless2026");
+    env::set_var(
+        "MANIFESTADOR_NFE_BOOTSTRAP_ADMIN_PASSWORD",
+        "SenhaHeadless2026",
+    );
 
     let result = migrations::migrate(&database);
     env::remove_var("MANIFESTADOR_NFE_BOOTSTRAP_ADMIN_PASSWORD");
@@ -704,7 +686,8 @@ fn test_headless_environment_password_updates_provisional_master() -> Result<(),
             },
         )
         .map_err(|error| error.to_string())?;
-    if record != ("$migration-harness$SenhaHeadless2026".to_string(), 0, 1) {
+    if !security::verify_password("SenhaHeadless2026", &record.0)? || record.1 != 0 || record.2 != 1
+    {
         return Err(
             "Senha de implantação headless não foi aplicada ao master provisório existente."
                 .to_string(),

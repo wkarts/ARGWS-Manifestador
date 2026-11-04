@@ -232,7 +232,8 @@ pub fn stop_background() -> Result<WebSocketRuntimeStatus, String> {
             .and_then(|value| value.parse::<u16>().ok())
             .unwrap_or(61004),
         url: None,
-        path: std::env::var("MANIFESTADOR_NFE_WEBSOCKET_PATH").unwrap_or_else(|_| "/ws".to_string()),
+        path: std::env::var("MANIFESTADOR_NFE_WEBSOCKET_PATH")
+            .unwrap_or_else(|_| "/ws".to_string()),
         clients_count: hub::list_clients().len(),
         started_at: None,
     })

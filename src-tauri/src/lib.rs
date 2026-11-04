@@ -369,14 +369,15 @@ fn start_manifestador_background(state: SharedState) {
                             .clamp(1, 24 * 60);
                         match state.data_dir() {
                             Ok(data_dir) => {
-                                if let Err(err) = crate::manifestador::automatic_cycle(
-                                    &mut conn,
-                                    &data_dir,
-                                ) {
+                                if let Err(err) =
+                                    crate::manifestador::automatic_cycle(&mut conn, &data_dir)
+                                {
                                     eprintln!("Falha no ciclo automático do Manifestador: {err}");
                                 }
                             }
-                            Err(err) => eprintln!("Falha ao resolver diretório do ciclo automático: {err}"),
+                            Err(err) => {
+                                eprintln!("Falha ao resolver diretório do ciclo automático: {err}")
+                            }
                         }
                         interval
                     }
@@ -395,7 +396,9 @@ fn start_manifestador_background(state: SharedState) {
             ));
         })
         .map(|_| ())
-        .unwrap_or_else(|err| eprintln!("Falha ao iniciar ciclo automático do Manifestador: {err}"));
+        .unwrap_or_else(|err| {
+            eprintln!("Falha ao iniciar ciclo automático do Manifestador: {err}")
+        });
 }
 
 #[cfg(feature = "desktop")]

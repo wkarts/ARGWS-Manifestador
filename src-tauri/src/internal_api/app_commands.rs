@@ -1637,11 +1637,8 @@ pub(crate) fn execute_command(
             let identity = api_identity
                 .as_ref()
                 .ok_or_else(|| "Sessão não encontrada.".to_string())?;
-            let company_id = required_manifestador_company(
-                &conn,
-                identity,
-                Some(get_i64(&args, "empresa_id")),
-            )?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
             crate::manifestador::get_company_config(&conn, company_id)
         }
         "manifestador_company_config_save" => {
@@ -1649,11 +1646,8 @@ pub(crate) fn execute_command(
             let identity = api_identity
                 .as_ref()
                 .ok_or_else(|| "Sessão não encontrada.".to_string())?;
-            let company_id = required_manifestador_company(
-                &conn,
-                identity,
-                Some(get_i64(&args, "empresa_id")),
-            )?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
             crate::manifestador::save_company_config(&conn, company_id, &get_payload(&args))
         }
         "manifestador_notes_list" => {
@@ -1682,11 +1676,8 @@ pub(crate) fn execute_command(
             let identity = api_identity
                 .as_ref()
                 .ok_or_else(|| "Sessão não encontrada.".to_string())?;
-            let company_id = required_manifestador_company(
-                &conn,
-                identity,
-                Some(get_i64(&args, "empresa_id")),
-            )?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
             let note_id = get_i64(&args, "nota_id");
             let valid: i64 = conn
                 .query_row(
@@ -1705,11 +1696,8 @@ pub(crate) fn execute_command(
             let identity = api_identity
                 .as_ref()
                 .ok_or_else(|| "Sessão não encontrada.".to_string())?;
-            let company_id = required_manifestador_company(
-                &conn,
-                identity,
-                Some(get_i64(&args, "empresa_id")),
-            )?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
             let note_id = get_i64(&args, "nota_id");
             let valid: i64 = conn
                 .query_row(
@@ -1733,11 +1721,8 @@ pub(crate) fn execute_command(
             let identity = api_identity
                 .as_ref()
                 .ok_or_else(|| "Sessão não encontrada.".to_string())?;
-            let company_id = required_manifestador_company(
-                &conn,
-                identity,
-                Some(get_i64(&args, "empresa_id")),
-            )?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
             crate::manifestador::import_xml(
                 &mut conn,
                 company_id,
@@ -1751,20 +1736,22 @@ pub(crate) fn execute_command(
             let identity = api_identity
                 .as_ref()
                 .ok_or_else(|| "Sessão não encontrada.".to_string())?;
-            let company_id = required_manifestador_company(
-                &conn,
-                identity,
-                Some(get_i64(&args, "empresa_id")),
-            )?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
             let request = json!({
                 "empresa_id": company_id,
                 "data_inicial": args.get("data_inicial"),
                 "data_final": args.get("data_final")
             });
-            let (response, mode) = if let Some(response) = crate::manifestador::call_provider(&conn, "obter_notas", &request)? {
+            let (response, mode) = if let Some(response) =
+                crate::manifestador::call_provider(&conn, "obter_notas", &request)?
+            {
                 (response, "provider")
             } else {
-                (crate::manifestador::native_obter_notas(&conn, company_id)?, "native")
+                (
+                    crate::manifestador::native_obter_notas(&conn, company_id)?,
+                    "native",
+                )
             };
             let mut imported = 0i64;
             let documents = response
@@ -1775,7 +1762,8 @@ pub(crate) fn execute_command(
                 .cloned()
                 .unwrap_or_default();
             for document in documents {
-                if crate::manifestador::import_provider_document(&mut conn, company_id, &document)? {
+                if crate::manifestador::import_provider_document(&mut conn, company_id, &document)?
+                {
                     imported += 1;
                 }
             }
@@ -1791,11 +1779,8 @@ pub(crate) fn execute_command(
             let identity = api_identity
                 .as_ref()
                 .ok_or_else(|| "Sessão não encontrada.".to_string())?;
-            let company_id = required_manifestador_company(
-                &conn,
-                identity,
-                Some(get_i64(&args, "empresa_id")),
-            )?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
             let nota_id = get_i64(&args, "nota_id");
             if let Some(xml) = args
                 .get("xml")
@@ -1820,22 +1805,19 @@ pub(crate) fn execute_command(
                 .map_err(|err| format!("Falha ao localizar NF-e para download: {err}"))?
                 .ok_or_else(|| "NF-e não pertence à empresa ativa.".to_string())?;
             let request = json!({"empresa_id": company_id, "nota_id": nota_id, "chave": chave});
-            if let Some(response) = crate::manifestador::call_provider(&conn, "download", &request)? {
-                let mut full_xml = response
-                    .get("xml")
-                    .map(value_text)
-                    .unwrap_or_default();
+            if let Some(response) = crate::manifestador::call_provider(&conn, "download", &request)?
+            {
+                let mut full_xml = response.get("xml").map(value_text).unwrap_or_default();
                 if full_xml.is_empty() {
-                    full_xml = response
-                        .get("docZip")
-                        .map(value_text)
-                        .unwrap_or_default();
+                    full_xml = response.get("docZip").map(value_text).unwrap_or_default();
                     if !full_xml.is_empty() {
                         full_xml = crate::manifestador::decode_doczip(&full_xml)?;
                     }
                 }
                 if full_xml.trim().is_empty() {
-                    return Err("O adaptador externo não retornou o XML completo da NF-e.".to_string());
+                    return Err(
+                        "O adaptador externo não retornou o XML completo da NF-e.".to_string()
+                    );
                 }
                 return crate::manifestador::download_note(
                     &conn,
@@ -1845,23 +1827,15 @@ pub(crate) fn execute_command(
                     Some(&full_xml),
                 );
             }
-            crate::manifestador::native_download_note(
-                &conn,
-                company_id,
-                nota_id,
-                &state.data_dir,
-            )
+            crate::manifestador::native_download_note(&conn, company_id, nota_id, &state.data_dir)
         }
         "manifestador_manifestar" => {
             let conn = open_connection(&state.db_path)?;
             let identity = api_identity
                 .as_ref()
                 .ok_or_else(|| "Sessão não encontrada.".to_string())?;
-            let company_id = required_manifestador_company(
-                &conn,
-                identity,
-                Some(get_i64(&args, "empresa_id")),
-            )?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
             let note_id = get_i64(&args, "nota_id");
             let event = get_string(&args, "evento");
             let justification = get_string(&args, "justificativa");
@@ -1881,7 +1855,9 @@ pub(crate) fn execute_command(
                 "evento": event,
                 "justificativa": justification
             });
-            if let Some(response) = crate::manifestador::call_provider(&conn, "manifestar", &request)? {
+            if let Some(response) =
+                crate::manifestador::call_provider(&conn, "manifestar", &request)?
+            {
                 let protocol = response.get("protocolo").and_then(Value::as_str);
                 let note = crate::manifestador::update_manifestation(
                     &conn,
@@ -1921,23 +1897,15 @@ pub(crate) fn execute_command(
                     .or_else(|| value.as_str()?.trim().parse::<i64>().ok())
             });
             let company_id = resolve_manifestador_company(&conn, identity, requested)?;
-            crate::manifestador::export_zip(
-                &conn,
-                &state.data_dir,
-                company_id,
-                &get_filters(&args),
-            )
+            crate::manifestador::export_zip(&conn, &state.data_dir, company_id, &get_filters(&args))
         }
         "manifestador_send_accounting" => {
             let conn = open_connection(&state.db_path)?;
             let identity = api_identity
                 .as_ref()
                 .ok_or_else(|| "Sessão não encontrada.".to_string())?;
-            let company_id = required_manifestador_company(
-                &conn,
-                identity,
-                Some(get_i64(&args, "empresa_id")),
-            )?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
             let data_inicial = get_string(&args, "data_inicial");
             let data_final = get_string(&args, "data_final");
             let recipient = get_string(&args, "destinatario");
