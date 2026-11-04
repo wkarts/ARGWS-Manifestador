@@ -63,7 +63,6 @@ export const visualThemePresets: VisualThemePreset[] = [
       sidebarEnd: "#F2F6F8",
       sidebarAccent: "#0B4F5C",
     },
-    typography: { ...defaultThemeTypography, fontFamily: '"ARGWS Inter", Inter, "Segoe UI", Arial, sans-serif' },
   },
   {
     id: "corporate-blue",

@@ -58,13 +58,15 @@ test('theme switches clear stale custom text colors and restore mode/palette/den
   const custom = [{ ...findThemePreset('corporate-blue'), id: 'custom:mine', custom: true, typography: { fontFamily: 'Arial', textColor: '#123456', mutedColor: '#234567' } }];
   applyVisualPreferences({ ...defaultVisualPreferences, preset: 'custom:mine' }, custom);
   assert.equal(properties.get('--text-color'), '#123456');
+  assert.equal(properties.get('--app-font-family'), 'Arial');
   applyVisualPreferences(defaultVisualPreferences);
   assert.equal(properties.has('--text-color'), false);
   assert.equal(properties.has('--text-muted'), false);
-  assert.match(properties.get('--app-font-family'), /ARGWS Inter/);
+  assert.equal(properties.get('--app-font-family'), 'Inter, Segoe UI, Arial, sans-serif');
   assert.equal(properties.get('--primary'), '#0B4F5C');
   applyVisualPreferences({ ...defaultVisualPreferences, mode: 'dark', density: 'dense' });
   assert.equal(attributes.get('data-theme'), 'dark');
+  assert.equal(properties.get('--app-font-family'), 'Inter, Segoe UI, Arial, sans-serif');
   assert.equal(attributes.get('data-density'), 'dense');
   assert.equal(properties.get('--primary-soft'), '#153C43');
   applyVisualPreferences({ ...defaultVisualPreferences, preset: 'corporate-blue' });
