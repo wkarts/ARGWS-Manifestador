@@ -912,7 +912,9 @@ fn probe_template_webport(client: &reqwest::blocking::Client, url: &str) -> bool
         if value
             .get("service")
             .and_then(|service| service.as_str())
-            .map(|value| value == "manifestador-nfe-web-proxy" || value == "internal-api-via-webport")
+            .map(|value| {
+                value == "manifestador-nfe-web-proxy" || value == "internal-api-via-webport"
+            })
             .unwrap_or(false)
         {
             return true;

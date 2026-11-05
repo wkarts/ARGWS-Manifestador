@@ -27,6 +27,7 @@
     "build:web": "vue-tsc --noEmit && vite build",
     "build:web:tauri": "npm run build:web && node ./scripts/prepare-tauri-resources.mjs",
     "typecheck": "vue-tsc --noEmit",
+    "test:theme": "node --test scripts/tests/theme.test.mjs",
     "ci:version": "node ./scripts/ci/check-version-sync.mjs",
     "ci:pr-title": "node ./scripts/ci/validate-pr-title.mjs",
     "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings",

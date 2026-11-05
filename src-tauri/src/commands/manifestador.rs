@@ -2,12 +2,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{json, Map, Value};
 use tauri::State;
 
-use crate::{
-    app_state::SharedState,
-    db::open_connection,
-    manifestador,
-    models::SessionIdentity,
-};
+use crate::{app_state::SharedState, db::open_connection, manifestador, models::SessionIdentity};
 
 fn session_and_connection(
     state: &State<'_, SharedState>,
@@ -51,7 +46,11 @@ fn resolve_company(
             }
         }
         let exists: i64 = conn
-            .query_row("SELECT COUNT(*) FROM empresas WHERE id = ?1 AND ativo = 1", [company_id], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM empresas WHERE id = ?1 AND ativo = 1",
+                [company_id],
+                |row| row.get(0),
+            )
             .map_err(|err| format!("Falha ao verificar empresa ativa: {err}"))?;
         if exists == 0 {
             return Err("Empresa ativa não encontrada ou inativa.".to_string());
@@ -78,7 +77,8 @@ fn required_company(
     identity: &SessionIdentity,
     requested: Option<i64>,
 ) -> Result<i64, String> {
-    resolve_company(conn, identity, requested)?.ok_or_else(|| "Selecione uma empresa para executar esta operação.".to_string())
+    resolve_company(conn, identity, requested)?
+        .ok_or_else(|| "Selecione uma empresa para executar esta operação.".to_string())
 }
 
 fn filters_company(filters: &Map<String, Value>) -> Option<i64> {
@@ -176,9 +176,15 @@ pub fn manifestador_note_get(
     let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:view")?;
     let company_id = required_company(&conn, &identity, Some(empresa_id))?;
     let valid: i64 = conn
-        .query_row("SELECT COUNT(*) FROM manifestador_notas WHERE id = ?1 AND empresa_id = ?2", params![nota_id, company_id], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM manifestador_notas WHERE id = ?1 AND empresa_id = ?2",
+            params![nota_id, company_id],
+            |row| row.get(0),
+        )
         .map_err(|err| format!("Falha ao validar NF-e: {err}"))?;
-    if valid == 0 { return Err("NF-e não pertence à empresa ativa.".to_string()); }
+    if valid == 0 {
+        return Err("NF-e não pertence à empresa ativa.".to_string());
+    }
     manifestador::note_json(&conn, nota_id)
 }
 
@@ -192,9 +198,15 @@ pub fn manifestador_note_logs(
     let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:view")?;
     let company_id = required_company(&conn, &identity, Some(empresa_id))?;
     let valid: i64 = conn
-        .query_row("SELECT COUNT(*) FROM manifestador_notas WHERE id = ?1 AND empresa_id = ?2", params![nota_id, company_id], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM manifestador_notas WHERE id = ?1 AND empresa_id = ?2",
+            params![nota_id, company_id],
+            |row| row.get(0),
+        )
         .map_err(|err| format!("Falha ao validar histórico: {err}"))?;
-    if valid == 0 { return Err("NF-e não pertence à empresa ativa.".to_string()); }
+    if valid == 0 {
+        return Err("NF-e não pertence à empresa ativa.".to_string());
+    }
     manifestador::list_logs(&conn, nota_id)
 }
 
@@ -206,7 +218,8 @@ pub fn manifestador_import_xml(
     xml: String,
     nsu: Option<i64>,
 ) -> Result<Value, String> {
-    let (mut conn, identity) = session_and_connection(&state, &session_token, "manifestador:manage")?;
+    let (mut conn, identity) =
+        session_and_connection(&state, &session_token, "manifestador:manage")?;
     let company_id = required_company(&conn, &identity, Some(empresa_id))?;
     manifestador::import_xml(&mut conn, company_id, &xml, nsu.unwrap_or_default(), None)
 }
@@ -219,18 +232,23 @@ pub fn manifestador_obter_notas(
     data_inicial: Option<String>,
     data_final: Option<String>,
 ) -> Result<Value, String> {
-    let (mut conn, identity) = session_and_connection(&state, &session_token, "manifestador:manage")?;
+    let (mut conn, identity) =
+        session_and_connection(&state, &session_token, "manifestador:manage")?;
     let company_id = required_company(&conn, &identity, Some(empresa_id))?;
     let request = json!({
         "empresa_id": company_id,
         "data_inicial": data_inicial,
         "data_final": data_final,
     });
-    let (response, mode) = if let Some(response) = manifestador::call_provider(&conn, "obter_notas", &request)? {
-        (response, "provider")
-    } else {
-        (manifestador::native_obter_notas(&conn, company_id)?, "native")
-    };
+    let (response, mode) =
+        if let Some(response) = manifestador::call_provider(&conn, "obter_notas", &request)? {
+            (response, "provider")
+        } else {
+            (
+                manifestador::native_obter_notas(&conn, company_id)?,
+                "native",
+            )
+        };
     let mut imported = 0i64;
     let documents = response
         .get("documentos")
@@ -244,7 +262,9 @@ pub fn manifestador_obter_notas(
             imported += 1;
         }
     }
-    Ok(json!({"ok": true, "mode": mode, "imported": imported, "message": format!("{imported} documento(s) recebido(s) pela integração {mode}. ")}))
+    Ok(
+        json!({"ok": true, "mode": mode, "imported": imported, "message": format!("{imported} documento(s) recebido(s) pela integração {mode}. ")}),
+    )
 }
 
 #[tauri::command]
@@ -298,15 +318,39 @@ pub fn manifestador_manifestar(
 ) -> Result<Value, String> {
     let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:manage")?;
     let company_id = required_company(&conn, &identity, Some(empresa_id))?;
-    let chave: String = conn.query_row("SELECT chave FROM manifestador_notas WHERE id = ?1 AND empresa_id = ?2", params![nota_id, company_id], |row| row.get(0)).optional().map_err(|err| format!("Falha ao localizar NF-e para manifestação: {err}"))?.ok_or_else(|| "NF-e não pertence à empresa ativa.".to_string())?;
+    let chave: String = conn
+        .query_row(
+            "SELECT chave FROM manifestador_notas WHERE id = ?1 AND empresa_id = ?2",
+            params![nota_id, company_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|err| format!("Falha ao localizar NF-e para manifestação: {err}"))?
+        .ok_or_else(|| "NF-e não pertence à empresa ativa.".to_string())?;
     let request = json!({"empresa_id": company_id, "nota_id": nota_id, "chave": chave, "evento": evento, "justificativa": justificativa});
     if let Some(response) = manifestador::call_provider(&conn, "manifestar", &request)? {
         let protocol = response.get("protocolo").and_then(Value::as_str);
-        let result = manifestador::update_manifestation(&conn, nota_id, &evento, justificativa.as_deref().unwrap_or_default(), protocol)?;
-        return Ok(json!({"mode": "provider", "response": response, "note": result, "message": "Manifestação enviada ao adaptador e registrada localmente."}));
+        let result = manifestador::update_manifestation(
+            &conn,
+            nota_id,
+            &evento,
+            justificativa.as_deref().unwrap_or_default(),
+            protocol,
+        )?;
+        return Ok(
+            json!({"mode": "provider", "response": response, "note": result, "message": "Manifestação enviada ao adaptador e registrada localmente."}),
+        );
     }
-    let result = manifestador::update_manifestation(&conn, nota_id, &evento, justificativa.as_deref().unwrap_or_default(), None)?;
-    Ok(json!({"mode": "local", "note": result, "warning": "Manifestação registrada localmente. Configure um adaptador externo para assinatura e envio real à SEFAZ."}))
+    let result = manifestador::update_manifestation(
+        &conn,
+        nota_id,
+        &evento,
+        justificativa.as_deref().unwrap_or_default(),
+        None,
+    )?;
+    Ok(
+        json!({"mode": "local", "note": result, "warning": "Manifestação registrada localmente. Configure um adaptador externo para assinatura e envio real à SEFAZ."}),
+    )
 }
 
 #[tauri::command]
@@ -359,5 +403,7 @@ pub fn manifestador_provider_test(
     let Some((endpoint, timeout)) = manifestador::provider_endpoint(&conn)? else {
         return Ok(json!({"configured": false, "message": "Nenhum endpoint externo configurado."}));
     };
-    Ok(json!({"configured": true, "endpoint": endpoint, "timeout_seconds": timeout, "message": "Endpoint configurado. O teste efetivo ocorre ao solicitar notas ou enviar manifestação."}))
+    Ok(
+        json!({"configured": true, "endpoint": endpoint, "timeout_seconds": timeout, "message": "Endpoint configurado. O teste efetivo ocorre ao solicitar notas ou enviar manifestação."}),
+    )
 }

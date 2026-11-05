@@ -170,9 +170,15 @@ impl Default for RuntimeSettings {
                 false,
             ),
             internal_api_cors_enabled: env_bool("MANIFESTADOR_NFE_API_CORS", false),
-            internal_api_token_header: env_string("MANIFESTADOR_NFE_API_TOKEN_HEADER", "X-App-Token"),
+            internal_api_token_header: env_string(
+                "MANIFESTADOR_NFE_API_TOKEN_HEADER",
+                "X-App-Token",
+            ),
             internal_api_token: env_string("MANIFESTADOR_NFE_API_TOKEN", ""),
-            internal_api_docs_public_local: env_bool("MANIFESTADOR_NFE_API_DOCS_PUBLIC_LOCAL", true),
+            internal_api_docs_public_local: env_bool(
+                "MANIFESTADOR_NFE_API_DOCS_PUBLIC_LOCAL",
+                true,
+            ),
             internal_api_open_scalar_after_start: env_bool(
                 "MANIFESTADOR_NFE_API_OPEN_SCALAR_AFTER_START",
                 false,
@@ -219,7 +225,10 @@ impl Default for RuntimeSettings {
             websocket_token: env_string("MANIFESTADOR_NFE_WEBSOCKET_TOKEN", ""),
             websocket_allow_lan: env_bool("MANIFESTADOR_NFE_WEBSOCKET_ALLOW_LAN", false),
             websocket_allow_external: env_bool("MANIFESTADOR_NFE_WEBSOCKET_ALLOW_EXTERNAL", false),
-            websocket_heartbeat_seconds: env_u64("MANIFESTADOR_NFE_WEBSOCKET_HEARTBEAT_SECONDS", 30),
+            websocket_heartbeat_seconds: env_u64(
+                "MANIFESTADOR_NFE_WEBSOCKET_HEARTBEAT_SECONDS",
+                30,
+            ),
             tray_enabled: env_bool("MANIFESTADOR_NFE_TRAY_ENABLED", true),
             minimize_to_tray: env_bool("MANIFESTADOR_NFE_TRAY_MINIMIZE_TO_TRAY", true),
             close_to_tray: env_bool("MANIFESTADOR_NFE_TRAY_CLOSE_TO_TRAY", false),
@@ -414,7 +423,10 @@ fn apply_env_from_settings(settings: &RuntimeSettings) {
         "MANIFESTADOR_NFE_API_PORT",
         settings.internal_api_port.to_string(),
     );
-    env::set_var("MANIFESTADOR_NFE_API_BASE_URL", &settings.internal_api_base_url);
+    env::set_var(
+        "MANIFESTADOR_NFE_API_BASE_URL",
+        &settings.internal_api_base_url,
+    );
     env::set_var(
         "MANIFESTADOR_NFE_API_SCALAR_URL",
         &settings.internal_api_docs_url,
@@ -436,7 +448,10 @@ fn apply_env_from_settings(settings: &RuntimeSettings) {
         settings.local_web_enabled.to_string(),
     );
     env::set_var("MANIFESTADOR_NFE_WEB_HOST", &settings.local_web_host);
-    env::set_var("MANIFESTADOR_NFE_WEB_PORT", settings.local_web_port.to_string());
+    env::set_var(
+        "MANIFESTADOR_NFE_WEB_PORT",
+        settings.local_web_port.to_string(),
+    );
     env::set_var(
         "MANIFESTADOR_NFE_WEB_AUTO_START",
         settings.local_web_auto_start.to_string(),

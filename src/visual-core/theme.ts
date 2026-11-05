@@ -51,9 +51,23 @@ export const defaultThemeTypography: VisualThemeTypography = {
 
 export const visualThemePresets: VisualThemePreset[] = [
   {
+    id: "argws-manifestador",
+    name: "ARGWS Manifestador",
+    description: "Identidade padrão: azul petróleo, turquesa e Inter. Interface clara com modo escuro opcional.",
+    colors: {
+      primary: "#0B4F5C",
+      primaryHover: "#083E49",
+      primarySoft: "#E1F5F2",
+      accent: "#00C7B6",
+      sidebarStart: "#FFFFFF",
+      sidebarEnd: "#F2F6F8",
+      sidebarAccent: "#0B4F5C",
+    },
+  },
+  {
     id: "corporate-blue",
     name: "Azul corporativo claro",
-    description: "Tema padrão profissional com sidebar clara.",
+    description: "Tema profissional com sidebar clara.",
     colors: {
       primary: "#2563eb",
       primaryHover: "#1d4ed8",
@@ -237,7 +251,7 @@ export const visualThemePresets: VisualThemePreset[] = [
 
 export const defaultVisualPreferences: UserVisualPreferences = {
   mode: "light",
-  preset: "corporate-blue",
+  preset: "argws-manifestador",
   density: "compact",
 };
 
@@ -303,7 +317,8 @@ export function saveVisualPreferences(userKey: string | number | null | undefine
 }
 
 function normalizeThemeColors(colors: Partial<VisualThemeColors>): VisualThemeColors {
-  const fallback = visualThemePresets[0].colors;
+  // Keep the original fallback for incomplete saved/imported custom themes.
+  const fallback = findThemePreset("corporate-blue").colors;
   return {
     primary: safeHex(colors.primary, fallback.primary),
     primaryHover: safeHex(colors.primaryHover, colors.primary || fallback.primaryHover),
@@ -388,7 +403,7 @@ export function applyVisualPreferences(preferences: UserVisualPreferences, custo
   root.setAttribute("data-theme-preset", preset.id);
   root.style.setProperty("--primary", preset.colors.primary);
   root.style.setProperty("--primary-hover", preset.colors.primaryHover);
-  root.style.setProperty("--primary-soft", preset.colors.primarySoft);
+  root.style.setProperty("--primary-soft", preset.id === "argws-manifestador" && preferences.mode === "dark" ? "#153C43" : preset.colors.primarySoft);
   root.style.setProperty("--accent", preset.colors.accent);
   root.style.setProperty("--sidebar-start", preset.colors.sidebarStart);
   root.style.setProperty("--sidebar-end", preset.colors.sidebarEnd);
@@ -420,6 +435,10 @@ export function applyVisualPreferences(preferences: UserVisualPreferences, custo
   if (preset.custom) {
     root.style.setProperty("--text-color", preferences.mode === "dark" ? "#e5edf8" : typography.textColor);
     root.style.setProperty("--text-muted", preferences.mode === "dark" ? "#aab7c8" : typography.mutedColor);
+  } else {
+    // Do not carry a previous custom theme's text colors into a built-in theme.
+    root.style.removeProperty("--text-color");
+    root.style.removeProperty("--text-muted");
   }
 
 }
