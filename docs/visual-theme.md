@@ -4,17 +4,17 @@ O preset `argws-manifestador` é o padrão para usuários sem preferência salva
 
 | Uso | Cor |
 | --- | --- |
-| Primária / ação | `#0B4F5C` |
-| Ação ao passar o mouse | `#083E49` |
-| Acento decorativo | `#00C7B6` |
-| Fundo claro | `#F2F6F8` |
+| Primária / ação | `#334E7D` |
+| Ação ao passar o mouse | `#263B60` |
+| Acento decorativo | `#64748B` |
+| Fundo claro | `#F5F6F8` |
 | Superfície | `#FFFFFF` |
-| Superfície de destaque clara | `#E1F5F2` |
-| Superfície de destaque escura | `#153C43` |
+| Superfície de destaque clara | `#EDF1F7` |
+| Superfície de destaque escura | `#243247` |
 
 O tema preserva a tipografia padrão original da aplicação: `Inter, Segoe UI, Arial, sans-serif`, sem carregar ou impor uma fonte nova. Fontes escolhidas em temas personalizados continuam respeitadas. Escalas e densidades existentes permanecem intactas.
 
-Turquesa não é usado como fundo de botão com texto branco. No modo escuro, o token de texto de destaque usa turquesa sobre superfícies escuras; ações mantêm petróleo e branco. A sidebar clara mantém texto petróleo.
+O azul acinzentado concentra os destaques nas ações. Fundos e cartões usam cinza neutro e branco. No modo escuro, o texto de destaque usa azul claro (`#AFC6EE`); botões mantêm azul sóbrio e branco. A sidebar clara mantém texto azul sóbrio.
 
 Preferências de aparência continuam pertencendo ao usuário. Esta alteração não move, cria nem modifica configurações fiscais, SMTP ou parâmetros de empresa.
 

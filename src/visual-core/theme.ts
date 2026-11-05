@@ -53,15 +53,15 @@ export const visualThemePresets: VisualThemePreset[] = [
   {
     id: "argws-manifestador",
     name: "ARGWS Manifestador",
-    description: "Identidade padrão: azul petróleo, turquesa e Inter. Interface clara com modo escuro opcional.",
+    description: "Azul sóbrio e superfícies neutras. Mantém a fonte padrão e oferece modo escuro opcional.",
     colors: {
-      primary: "#0B4F5C",
-      primaryHover: "#083E49",
-      primarySoft: "#E1F5F2",
-      accent: "#00C7B6",
+      primary: "#334E7D",
+      primaryHover: "#263B60",
+      primarySoft: "#EDF1F7",
+      accent: "#64748B",
       sidebarStart: "#FFFFFF",
-      sidebarEnd: "#F2F6F8",
-      sidebarAccent: "#0B4F5C",
+      sidebarEnd: "#F5F6F8",
+      sidebarAccent: "#334E7D",
     },
   },
   {
@@ -403,7 +403,7 @@ export function applyVisualPreferences(preferences: UserVisualPreferences, custo
   root.setAttribute("data-theme-preset", preset.id);
   root.style.setProperty("--primary", preset.colors.primary);
   root.style.setProperty("--primary-hover", preset.colors.primaryHover);
-  root.style.setProperty("--primary-soft", preset.id === "argws-manifestador" && preferences.mode === "dark" ? "#153C43" : preset.colors.primarySoft);
+  root.style.setProperty("--primary-soft", preset.id === "argws-manifestador" && preferences.mode === "dark" ? "#243247" : preset.colors.primarySoft);
   root.style.setProperty("--accent", preset.colors.accent);
   root.style.setProperty("--sidebar-start", preset.colors.sidebarStart);
   root.style.setProperty("--sidebar-end", preset.colors.sidebarEnd);
