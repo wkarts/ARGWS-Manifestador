@@ -5448,15 +5448,15 @@ button,
 
 /* ARGWS identity: scoped to the new preset; existing palettes keep their tokens. */
 :root[data-theme-preset="argws-manifestador"][data-theme="light"] {
-  --page-bg: #F2F6F8;
-  --surface-muted-bg: #F2F6F8;
+  --page-bg: #F5F6F8;
+  --surface-muted-bg: #F5F6F8;
   --card-bg: #FFFFFF;
   --surface-bg: #FFFFFF;
-  --primary-ink: #0B4F5C;
+  --primary-ink: #334E7D;
 }
 :root[data-theme-preset="argws-manifestador"][data-theme="dark"] {
-  /* Turquoise is readable on dark surfaces; buttons retain petrol and white. */
-  --primary-ink: #00C7B6;
+  /* Light blue text on dark surfaces; buttons retain blue and white. */
+  --primary-ink: #AFC6EE;
 }
 :root[data-theme-preset="argws-manifestador"] .compact-avatar,
 :root[data-theme-preset="argws-manifestador"] .user-avatar {
@@ -5465,5 +5465,5 @@ button,
 }
 
 :root[data-theme-preset="argws-manifestador"] .professional-sidebar {
-  --primary-ink: #0B4F5C;
+  --primary-ink: #334E7D;
 }

@@ -63,12 +63,12 @@ test('theme switches clear stale custom text colors and restore mode/palette/den
   assert.equal(properties.has('--text-color'), false);
   assert.equal(properties.has('--text-muted'), false);
   assert.equal(properties.get('--app-font-family'), 'Inter, Segoe UI, Arial, sans-serif');
-  assert.equal(properties.get('--primary'), '#0B4F5C');
+  assert.equal(properties.get('--primary'), '#334E7D');
   applyVisualPreferences({ ...defaultVisualPreferences, mode: 'dark', density: 'dense' });
   assert.equal(attributes.get('data-theme'), 'dark');
   assert.equal(properties.get('--app-font-family'), 'Inter, Segoe UI, Arial, sans-serif');
   assert.equal(attributes.get('data-density'), 'dense');
-  assert.equal(properties.get('--primary-soft'), '#153C43');
+  assert.equal(properties.get('--primary-soft'), '#243247');
   applyVisualPreferences({ ...defaultVisualPreferences, preset: 'corporate-blue' });
   assert.equal(properties.get('--primary'), '#2563eb');
   assert.equal(properties.get('--primary-soft'), '#dbeafe');
@@ -85,13 +85,13 @@ function contrast(a, b) {
 }
 test('brand text/button pairs meet 4.5:1 in light and dark modes', () => {
   const preset = findThemePreset('argws-manifestador');
-  for (const bg of ['#FFFFFF', '#F2F6F8', preset.colors.primarySoft]) {
+  for (const bg of ['#FFFFFF', '#F5F6F8', preset.colors.primarySoft]) {
     assert.ok(contrast(preset.colors.primary, bg) >= 4.5);
   }
   assert.ok(contrast('#FFFFFF', preset.colors.primaryHover) >= 4.5);
   applyVisualPreferences({ ...defaultVisualPreferences, mode: 'dark' });
   for (const token of ['--adaptive-dark-page-bg', '--adaptive-dark-surface-bg', '--adaptive-dark-card-bg', '--adaptive-dark-muted-bg', '--primary-soft']) {
-    assert.ok(contrast('#00C7B6', properties.get(token)) >= 4.5, token);
+    assert.ok(contrast('#AFC6EE', properties.get(token)) >= 4.5, token);
     assert.ok(contrast('#f8fafc', properties.get(token)) >= 4.5, token);
   }
 });
