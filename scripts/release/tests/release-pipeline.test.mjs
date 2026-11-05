@@ -561,3 +561,21 @@ test('bootstrap é interno, política de senha é central e mobile suporta modo 
   assert.match(mobileConnection, /sessionStorage/);
   assert.doesNotMatch(harness, /ferias_colaboradores|funcionarios|batidas|Ponto Manager/i);
 });
+
+
+test('CI e release Android evitam o pacote SDK tools removido', () => {
+  for (const file of ['mobile-android.yml', 'release.yml']) {
+    const workflow = fs.readFileSync(path.join(repositoryRoot, '.github', 'workflows', file), 'utf8');
+    const setupSteps = [...workflow.matchAll(/uses: android-actions\/setup-android@[^\n]+([\s\S]*?)(?=\n      - name:|$)/g)];
+    assert.equal(setupSteps.length, 1, `${file}: um setup Android deve ser validado`);
+    const packages = setupSteps[0][1].match(/packages: (.+)/)?.[1].trim().split(/\s+/);
+    assert.ok(packages?.includes('platform-tools'), `${file}: declare platform-tools explicitamente`);
+    assert.ok(!packages.includes('tools'), `${file}: não instale o pacote tools removido`);
+  }
+  const androidWorkflow = fs.readFileSync(path.join(repositoryRoot, '.github', 'workflows', 'mobile-android.yml'), 'utf8');
+  assert.equal(
+    (androidWorkflow.match(/- "\.github\/workflows\/release\.yml"/g) || []).length,
+    2,
+    'Alterações da release devem disparar validação Android em push e pull_request',
+  );
+});
