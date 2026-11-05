@@ -13,9 +13,16 @@ test('release preparation uses local immutable tags, repeats safely and refuses 
   try {
     fs.mkdirSync(bin);
     command(temp, 'init', '--bare', remote);
-    command(temp, 'clone', '--shared', root, checkout);
-    command(checkout, 'remote', 'set-url', 'origin', remote);
-    for (const tag of command(checkout, 'tag', '--list').split('\n').filter(Boolean)) command(checkout, 'tag', '-d', tag);
+    fs.mkdirSync(checkout);
+    command(checkout, 'init');
+    command(checkout, 'remote', 'add', 'origin', remote);
+    // An independent fixture must also work when Actions checks out shallow history.
+    for (const file of ['VERSION', 'package.json', 'package-lock.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock', 'src-tauri/tauri.conf.json', 'src/config/projectConfig.ts', 'scripts/release/prepare-release.mjs', 'scripts/ci/check-version-sync.mjs']) {
+      const target = path.join(checkout, file);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(path.join(root, file), target);
+    }
+    command(checkout, 'add', '.');
     command(checkout, 'config', 'user.name', 'Fixture');
     command(checkout, 'config', 'user.email', 'fixture@example.invalid');
     command(checkout, 'commit', '--allow-empty', '-m', 'fix: fixture release');
