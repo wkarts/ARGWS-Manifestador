@@ -11,6 +11,8 @@ mod migrations;
 mod manifestador;
 mod smtp_settings;
 mod fiscal_engine;
+mod fiscal_document;
+mod certificates;
 mod models;
 mod security;
 mod runtime_config;
@@ -135,6 +137,8 @@ pub fn run() {
             commands::companies::company_lookup_ie,
             commands::manifestador::application_smtp_get,
             commands::manifestador::application_smtp_save,
+            commands::manifestador::manifestador_certificate_import,
+            commands::manifestador::manifestador_certificates_installed,
             commands::manifestador::manifestador_fiscal_status,
             commands::manifestador::manifestador_fiscal_process,
             commands::manifestador::manifestador_summary,
@@ -278,6 +282,8 @@ pub fn run() {
             commands::companies::company_lookup_ie,
             commands::manifestador::application_smtp_get,
             commands::manifestador::application_smtp_save,
+            commands::manifestador::manifestador_certificate_import,
+            commands::manifestador::manifestador_certificates_installed,
             commands::manifestador::manifestador_fiscal_status,
             commands::manifestador::manifestador_fiscal_process,
             commands::manifestador::manifestador_summary,

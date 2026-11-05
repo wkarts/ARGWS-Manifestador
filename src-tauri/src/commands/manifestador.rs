@@ -272,6 +272,9 @@ pub fn manifestador_obter_notas(
             imported += 1;
         }
     }
+    if mode == "native" {
+        manifestador::commit_distribution_cursor(&conn, company_id, &response)?;
+    }
     Ok(
         json!({"ok": true, "mode": mode, "imported": imported, "message": format!("{imported} documento(s) recebido(s) pela integração {mode}. ")}),
     )
@@ -291,6 +294,9 @@ pub fn manifestador_download(
     if let Some(xml) = xml.as_deref().filter(|value| !value.trim().is_empty()) {
         return manifestador::download_note(&conn, &data_dir, company_id, nota_id, Some(xml));
     }
+    if manifestador::has_local_xml(&conn, company_id, nota_id)? {
+        return manifestador::download_note(&conn, &data_dir, company_id, nota_id, None);
+    }
     let chave: String = conn
         .query_row(
             "SELECT chave FROM manifestador_notas WHERE id = ?1 AND empresa_id = ?2",
@@ -300,6 +306,9 @@ pub fn manifestador_download(
         .optional()
         .map_err(|err| format!("Falha ao localizar NF-e para download: {err}"))?
         .ok_or_else(|| "NF-e não pertence à empresa ativa.".to_string())?;
+    if chave.as_bytes().get(20..22) != Some(b"55") {
+        return Err("Importe o XML completo deste documento. O serviço nativo de distribuição implementado é exclusivo de NF-e modelo 55.".into());
+    }
     let request = json!({"empresa_id": company_id, "nota_id": nota_id, "chave": chave});
     if let Some(response) = manifestador::call_provider(&conn, "download", &request)? {
         let mut full_xml = value_text(response.get("xml"));
@@ -337,9 +346,10 @@ pub fn manifestador_manifestar(
         .optional()
         .map_err(|err| format!("Falha ao localizar NF-e para manifestação: {err}"))?
         .ok_or_else(|| "NF-e não pertence à empresa ativa.".to_string())?;
+    manifestador::ensure_manifestation_model(&conn, nota_id)?;
     let request = json!({"empresa_id": company_id, "nota_id": nota_id, "chave": chave, "evento": evento, "justificativa": justificativa});
     if let Some(response) = manifestador::call_provider(&conn, "manifestar", &request)? {
-        let protocol = response.get("protocolo").and_then(Value::as_str);
+        let protocol = manifestador::manifestation_protocol(&response)?;
         let result = manifestador::update_manifestation(
             &conn,
             nota_id,
@@ -465,4 +475,39 @@ pub fn manifestador_fiscal_process(
     let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:view")?;
     let company = required_company(&conn, &identity, Some(empresa_id))?;
     crate::fiscal_engine::process(&conn, &state.data_dir()?, company, nota_id, &operation)
+}
+
+#[tauri::command]
+pub fn manifestador_certificate_import(
+    state: State<'_, SharedState>,
+    session_token: String,
+    empresa_id: i64,
+    file_name: String,
+    certificate_secret_base64: String,
+) -> Result<Value, String> {
+    if empresa_id <= 0 {
+        return Err("Selecione uma empresa.".into());
+    }
+    let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:manage")?;
+    let company = required_company(&conn, &identity, Some(empresa_id))?;
+    crate::certificates::import_file(
+        &state.data_dir()?,
+        company,
+        &file_name,
+        &certificate_secret_base64,
+    )
+}
+
+#[tauri::command]
+pub fn manifestador_certificates_installed(
+    state: State<'_, SharedState>,
+    session_token: String,
+    empresa_id: i64,
+) -> Result<Value, String> {
+    if empresa_id <= 0 {
+        return Err("Selecione uma empresa.".into());
+    }
+    let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:manage")?;
+    required_company(&conn, &identity, Some(empresa_id))?;
+    crate::certificates::installed()
 }

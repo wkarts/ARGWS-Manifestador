@@ -59,6 +59,7 @@ $SUDO apt-get update
 
 COMMON_PACKAGES=(
   build-essential
+  cmake
   ca-certificates
   curl
   wget

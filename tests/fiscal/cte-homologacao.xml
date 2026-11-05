@@ -1,0 +1,173 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Fixture de teste: dados ficticios, assinatura e protocolo ficticios. -->
+<cteProc xmlns="http://www.portalfiscal.inf.br/cte" versao="4.00">
+    <CTe xmlns="http://www.portalfiscal.inf.br/cte">
+        <infCte Id="CTe35260911222333000181570010000015041100000048" versao="4.00">
+            <ide>
+                <cUF>35</cUF>
+                <cCT>10000004</cCT>
+                <CFOP>6353</CFOP>
+                <natOp>PRESTACAO DE SERVICO DE TRANSPORTE</natOp>
+                <mod>57</mod>
+                <serie>1</serie>
+                <nCT>1504</nCT>
+                <dhEmi>2026-09-10T10:00:00-03:00</dhEmi>
+                <tpImp>1</tpImp>
+                <tpEmis>1</tpEmis>
+                <cDV>8</cDV>
+                <tpAmb>2</tpAmb>
+                <tpCTe>0</tpCTe>
+                <procEmi>0</procEmi>
+                <verProc>1.0</verProc>
+                <cMunEnv>3550308</cMunEnv>
+                <xMunEnv>SAO PAULO</xMunEnv>
+                <UFEnv>SP</UFEnv>
+                <modal>01</modal>
+                <tpServ>0</tpServ>
+                <cMunIni>3550308</cMunIni>
+                <xMunIni>SAO PAULO</xMunIni>
+                <UFIni>SP</UFIni>
+                <cMunFim>3304557</cMunFim>
+                <xMunFim>RIO DE JANEIRO</xMunFim>
+                <UFFim>RJ</UFFim>
+                <retira>1</retira>
+                <indIEToma>1</indIEToma>
+                <toma3>
+                    <toma>0</toma>
+                </toma3>
+            </ide>
+            <compl>
+                <ObsCont xCampo="Observacao">
+                    <xTexto>CT-e de teste, dados ficticios.</xTexto>
+                </ObsCont>
+            </compl>
+            <emit>
+                <CNPJ>11222333000181</CNPJ>
+                <IE>111222333444</IE>
+                <xNome>TRANSPORTADORA EXEMPLO LTDA</xNome>
+                <xFant>TRANSPORTADORA EXEMPLO</xFant>
+                <enderEmit>
+                    <xLgr>RUA DOS TESTES</xLgr>
+                    <nro>100</nro>
+                    <xBairro>CENTRO</xBairro>
+                    <cMun>3550308</cMun>
+                    <xMun>SAO PAULO</xMun>
+                    <CEP>01001000</CEP>
+                    <UF>SP</UF>
+                    <fone>1130000000</fone>
+                </enderEmit>
+                <CRT>3</CRT>
+            </emit>
+            <rem>
+                <CNPJ>11444777000161</CNPJ>
+                <IE>222333444555</IE>
+                <xNome>INDUSTRIA REMETENTE EXEMPLO S.A.</xNome>
+                <xFant>REMETENTE EXEMPLO</xFant>
+                <fone>1131000000</fone>
+                <enderReme>
+                    <xLgr>AVENIDA DA INDUSTRIA</xLgr>
+                    <nro>200</nro>
+                    <xBairro>DISTRITO INDUSTRIAL</xBairro>
+                    <cMun>3550308</cMun>
+                    <xMun>SAO PAULO</xMun>
+                    <CEP>01002000</CEP>
+                    <UF>SP</UF>
+                    <cPais>1058</cPais>
+                    <xPais>BRASIL</xPais>
+                </enderReme>
+            </rem>
+            <dest>
+                <CNPJ>12345678000195</CNPJ>
+                <IE>333444555666</IE>
+                <xNome>COMERCIAL DESTINATARIA EXEMPLO LTDA</xNome>
+                <fone>2132000000</fone>
+                <enderDest>
+                    <xLgr>RUA DO COMERCIO</xLgr>
+                    <nro>300</nro>
+                    <xBairro>CENTRO</xBairro>
+                    <cMun>3304557</cMun>
+                    <xMun>RIO DE JANEIRO</xMun>
+                    <CEP>20010000</CEP>
+                    <UF>RJ</UF>
+                    <cPais>1058</cPais>
+                    <xPais>BRASIL</xPais>
+                </enderDest>
+            </dest>
+            <vPrest>
+                <vTPrest>1000.00</vTPrest>
+                <vRec>1000.00</vRec>
+                <Comp>
+                    <xNome>FRETE PESO</xNome>
+                    <vComp>750.00</vComp>
+                </Comp>
+                <Comp>
+                    <xNome>FRETE VALOR</xNome>
+                    <vComp>250.00</vComp>
+                </Comp>
+            </vPrest>
+            <imp>
+                <ICMS>
+                    <ICMS00>
+                        <CST>00</CST>
+                        <vBC>1000.00</vBC>
+                        <pICMS>12.00</pICMS>
+                        <vICMS>120.00</vICMS>
+                    </ICMS00>
+                </ICMS>
+            </imp>
+            <infCTeNorm>
+                <infCarga>
+                    <vCarga>50000.00</vCarga>
+                    <proPred>PECAS INDUSTRIAIS</proPred>
+                    <infQ>
+                        <cUnid>01</cUnid>
+                        <tpMed>PESO BRUTO</tpMed>
+                        <qCarga>1200.0000</qCarga>
+                    </infQ>
+                </infCarga>
+                <infDoc>
+                    <infNFe>
+                        <chave>35270111222333000181550010000012341000012349</chave>
+                    </infNFe>
+                </infDoc>
+                <infModal versaoModal="4.00">
+                    <rodo>
+                        <RNTRC>12345678</RNTRC>
+                    </rodo>
+                </infModal>
+            </infCTeNorm>
+        </infCte>
+        <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+            <SignedInfo>
+                <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+                <SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+                <Reference URI="#CTe35260911222333000181570010000015041100000048">
+                    <Transforms>
+                        <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+                        <Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+                    </Transforms>
+                    <DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+                    <DigestValue>AAAAAAAAAAAAAAAAAAAAAAAAAAA=</DigestValue>
+                </Reference>
+            </SignedInfo>
+            <SignatureValue>AAAA</SignatureValue>
+            <KeyInfo>
+                <X509Data>
+                    <X509Certificate>AAAA</X509Certificate>
+                </X509Data>
+            </KeyInfo>
+        </Signature>
+    </CTe>
+    <protCTe versao="4.00">
+        <infProt>
+            <tpAmb>2</tpAmb>
+            <verAplic>SVRS202610</verAplic>
+            <chCTe>35260911222333000181570010000015041100000048</chCTe>
+            <dhRecbto>2026-09-10T10:00:30-03:00</dhRecbto>
+            <nProt>135270000000001</nProt>
+            <digVal>AAAAAAAAAAAAAAAAAAAAAAAAAAA=</digVal>
+            <cStat>100</cStat>
+            <xMotivo>Autorizado o uso do CT-e</xMotivo>
+        </infProt>
+    </protCTe>
+</cteProc>

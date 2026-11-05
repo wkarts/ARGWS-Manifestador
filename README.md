@@ -24,7 +24,7 @@ Aplicação nova do Manifestador NF-e para desktop Windows, Web/PWA, Android, iO
 - Estrutura preparada para API interna, integrações, serviço e modo headless.
 - Android APK/AAB e iOS ARM64 com IPA não assinado, usando o mesmo frontend local e SQLite.
 - Consulta nativa DistribuiçãoDFe com certificado A1/PFX no desktop.
-- Importação de XML, resumos `resNFe`, download, ZIP, DANFE, histórico e manifestação de NF-e.
+- Importação de XML NF-e/NFC-e/CT-e, resumos `resNFe`, download, ZIP, PDF NF-e/NFC-e e validação XSD embarcados; histórico e manifestação exclusiva de NF-e. Consulte [motor fiscal e certificados](docs/ACBR_FISCAL.md).
 - Integração JSON externa compatível com ACBr/SEFAZ e envio SMTP TLS à contabilidade.
 
 ## Documentação essencial

@@ -1,0 +1,26 @@
+{
+  "source_archive": "Schemas/Schemas_04112026.zip",
+  "source_directory": "Schemas/CTe",
+  "files": {
+    "DFeTiposBasicos_v1.00.xsd": "4f8c910312926b3ffe10d2510c92fd3edbe1f200eeb58cb950741f950604695c",
+    "cte-package_v4.00.xsd": "8d3813524d64fa3f0689027b1d5f72fef33fd7fb63dad93a1de6cbe7deb1e8f4",
+    "cteModalAereo_v4.00.xsd": "c383586a73ae8e8c9eda444faeb8219a8e049429bb4cf27bf4ef5cc1f7638c40",
+    "cteModalAquaviario_v4.00.xsd": "606686017e7b79d7fe4ee16b96723832f73949081b99fec2817547e933c6a423",
+    "cteModalDutoviario_v4.00.xsd": "d6690a955ec52bc8a7bdfaa75dde51daf950f6f7deb7ff88685f923fe890c3f8",
+    "cteModalFerroviario_v4.00.xsd": "d9de99d222d6a7c8a0234382a293bc14e60b5ee156dee1fc900f56da5ffed45c",
+    "cteModalRodoviario_v4.00.xsd": "f7f80a8cbbeb62ceb785cc62ca4af9983b125b8f45e98e97c7a928e395647292",
+    "cteMultiModal_v4.00.xsd": "deac2b6be5000affdc89e5cfaedbae82519da9c95a1b0c55c8e1f7d1db20ab34",
+    "cteTiposBasico_v4.00.xsd": "b81b275e3728c59c8fc3767d3fb4c93080aaf30f1f2ebeb5247be0bba898b1a7",
+    "cte_v4.00.xsd": "39d01ef5afad8a44102871561c92dfc58be9fdd761f320ceb1f8cb136ebff320",
+    "procCTe_v4.00.xsd": "f8646422637971c40589d78a02e11aa23f5c472a77ad68955809c9ccea61fe5b",
+    "tiposGeralCTe_v4.00.xsd": "cae352b5f5d21246a9b186b5323182dc7ebfb1d5d4ebb400cf60e86aa2d2ceb5",
+    "xmldsig-core-schema_v1.01.xsd": "8ce2a385b593c85acf09cb03521f9e730dad2b2e6a5d02cc6f5b688ca94ce230"
+  },
+  "reference_url": "https://svn.code.sf.net/p/acbr/code/trunk2/Exemplos/ACBrDFe/Schemas",
+  "svn_revision": null,
+  "source": "Supplied archive Schemas/Schemas_04112026.zip; latest upstream not verified (proxy HTTP 403)",
+  "archive_sha256": "e2df7f5847f19b20d6b342e9568f3a7e2ae6af98e80a70f3f335c635f0056f03",
+  "generated_files": [
+    "cte-package_v4.00.xsd"
+  ]
+}
