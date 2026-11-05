@@ -1,6 +1,6 @@
 [package]
 name = "manifestador_nfe"
-version = "0.2.0"
+version = "1.1.0"
 description = "Aplicação Tauri/Rust para distribuição, manifestação, download e organização de NF-e destinadas"
 authors = ["Wallace Kleiton <wwsoftwares@gmail.com>"]
 edition = "2021"
