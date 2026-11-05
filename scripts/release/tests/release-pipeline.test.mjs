@@ -426,7 +426,9 @@ test('contrato mobile mantém frontend local, features isoladas e IPA real sem c
   assert.match(releaseWorkflow, /pod --version/);
   assert.match(routerSource, /Rota exclusiva do runtime desktop bloqueada no mobile nativo/);
   assert.match(routerSource, /desktopOnly: true/);
-  assert.match(navigationSource, /Parâmetros.*, desktopOnly: true/);
+  const systemSettingsMenu = navigationSource.split("\n").find((line) => line.includes('route: "/sistema"'));
+  assert.ok(systemSettingsMenu, "menu de configurações da aplicação deve existir");
+  assert.match(systemSettingsMenu, /desktopOnly: true/);
   assert.match(ipaScript, /Payload/);
   assert.match(ipaScript, /CFBundleExecutable/);
   assert.match(ipaScript, /platform IOSSIMULATOR/);

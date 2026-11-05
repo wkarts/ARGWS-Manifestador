@@ -114,19 +114,29 @@ pub fn manifestador_summary(
 pub fn manifestador_config_get(
     state: State<'_, SharedState>,
     session_token: String,
+    empresa_id: i64,
 ) -> Result<Value, String> {
-    let (conn, _) = session_and_connection(&state, &session_token, "manifestador:view")?;
-    manifestador::get_config(&conn)
+    if empresa_id <= 0 {
+        return Err("Informe a empresa dos parâmetros fiscais.".into());
+    }
+    let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:view")?;
+    let company_id = required_company(&conn, &identity, Some(empresa_id))?;
+    manifestador::get_config(&conn, company_id)
 }
 
 #[tauri::command]
 pub fn manifestador_config_save(
     state: State<'_, SharedState>,
     session_token: String,
+    empresa_id: i64,
     payload: Map<String, Value>,
 ) -> Result<Value, String> {
-    let (conn, _) = session_and_connection(&state, &session_token, "manifestador:manage")?;
-    manifestador::save_config(&conn, &payload)
+    if empresa_id <= 0 {
+        return Err("Informe a empresa dos parâmetros fiscais.".into());
+    }
+    let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:manage")?;
+    let company_id = required_company(&conn, &identity, Some(empresa_id))?;
+    manifestador::save_config(&conn, company_id, &payload)
 }
 
 #[tauri::command]
@@ -398,9 +408,14 @@ pub fn manifestador_send_accounting(
 pub fn manifestador_provider_test(
     state: State<'_, SharedState>,
     session_token: String,
+    empresa_id: i64,
 ) -> Result<Value, String> {
-    let (conn, _) = session_and_connection(&state, &session_token, "manifestador:view")?;
-    let Some((endpoint, timeout)) = manifestador::provider_endpoint(&conn)? else {
+    if empresa_id <= 0 {
+        return Err("Informe a empresa dos parâmetros fiscais.".into());
+    }
+    let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:view")?;
+    let company_id = required_company(&conn, &identity, Some(empresa_id))?;
+    let Some((endpoint, timeout)) = manifestador::provider_endpoint(&conn, company_id)? else {
         return Ok(json!({"configured": false, "message": "Nenhum endpoint externo configurado."}));
     };
     Ok(

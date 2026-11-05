@@ -1,8 +1,8 @@
 # Reconstrução do Manifestador NF-e
 
-Esta versão é uma aplicação nova baseada no template Tauri 2 + Rust + Vue 3 + TypeScript. A interface não reproduz as telas Delphi: os recursos foram reorganizados em uma experiência desktop moderna, com empresa ativa, permissões e dados isolados por empresa.
+O Manifestador NF-e organiza documentos fiscais destinados, manifestações e XMLs por empresa, com permissões de consulta e operação.
 
-## Recursos migrados
+## Recursos fiscais
 
 - Cadastro e configuração de empresas do aplicativo.
 - Migração das tabelas legadas de empresas, notas, itens e histórico para SQLite local.
@@ -47,3 +47,20 @@ python3 scripts/ci/validate-tauri-project.py --project . --mode static
 ```
 
 As validações Rust (`rustfmt`, Clippy, testes e build Tauri) devem ser executadas no Windows com `build-windows.bat`, pois o ambiente de empacotamento desta reconstrução não inclui o toolchain Rust nativo.
+
+
+## Parâmetros por empresa e migração
+
+Em **Empresas → Editar → Parâmetros fiscais**, configure consulta, intervalo, SMTP, endpoints, certificado e diretórios do cadastro aberto. O seletor de empresa da barra superior não altera o destino desse formulário. SMTP e dados fiscais são salvos na mesma transação.
+
+A migração cria `manifestador_empresa_operacao` e copia uma única vez os parâmetros anteriormente compartilhados para as empresas já cadastradas. A tabela original é preservada para compatibilidade histórica, mas deixa de alimentar as operações. Alterar uma empresa não atualiza as outras. Empresas novas começam com parâmetros próprios e sem SMTP ou endpoints herdados. Senhas existentes são preservadas quando o campo fica vazio.
+
+O agendador verifica a cada minuto quais empresas estão habilitadas e respeita o intervalo individual, persistindo também as tentativas sem sucesso. Consulta nativa, adaptador e envio à contabilidade leem exclusivamente os parâmetros da empresa da operação.
+
+Os comandos `manifestador_config_get`, `manifestador_config_save` e `manifestador_provider_test` passam a exigir `empresa_id`. Clientes da API devem enviá-lo; vínculo e permissões continuam validados no backend.
+
+## Navegação e indicadores
+
+A entrada principal é a Visão fiscal, seguida de Manifestação NF-e. Cadastros genéricos e ficha técnica não fazem parte do fluxo fiscal e ficam desabilitados na configuração do produto e no acesso às rotas. Suas tabelas e implementações permanecem preservadas; notas e itens fiscais possuem tabelas próprias, sem dependência desses cadastros. Empresas, usuários, perfis, integrações, sincronização, serviços, segurança e licenciamento mantêm suas configurações anteriores.
+
+Os indicadores vêm do resumo fiscal persistido para a empresa selecionada. O painel não consulta a SEFAZ nem trata recurso habilitado como serviço saudável. Registros locais de manifestação não equivalem a eventos autorizados; o histórico e o protocolo devem ser conferidos.

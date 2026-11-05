@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import AppModal from "../components/AppModal.vue";
 import BasePage from "../components/base/BasePage.vue";
 import { useSessionStore } from "../stores/session";
@@ -16,15 +17,13 @@ import {
   listManifestadorNotes,
   manifestManifestadorNote,
   sendManifestadorAccounting,
-  saveManifestadorCompanyConfig,
-  saveManifestadorConfig,
-  testManifestadorProvider,
   type GenericRecord,
 } from "../services/crud";
 import { showSplashInfo, showSplashSuccess, showSplashWarning } from "../services/splash";
 import { openReportPreview } from "../print/reportWindow";
 
 const session = useSessionStore();
+const router = useRouter();
 const loading = ref(false);
 const saving = ref(false);
 const error = ref("");
@@ -33,7 +32,6 @@ const statusFilter = ref("");
 const rows = ref<GenericRecord[]>([]);
 const summary = ref<GenericRecord>({ total: 0, downloaded: 0, manifested: 0, pending: 0 });
 const importModalOpen = ref(false);
-const configModalOpen = ref(false);
 const manifestModalOpen = ref(false);
 const logsModalOpen = ref(false);
 const accountingModalOpen = ref(false);
@@ -141,31 +139,34 @@ function resetCompanyConfig() {
   Object.assign(companyConfig, defaultCompanyConfig());
 }
 
+let requestId = 0;
 async function load() {
-  if (!session.sessionToken) return;
-  loading.value = true;
+  const request = ++requestId;
+  const empresaId = currentCompanyId.value;
+  rows.value = [];
+  summary.value = {};
+  resetConfig();
+  resetCompanyConfig();
   error.value = "";
+  loading.value = false;
+  if (!session.sessionToken || !empresaId) return;
+  loading.value = true;
   try {
-    const filters: GenericRecord = { search: search.value, status: statusFilter.value };
-    if (currentCompanyId.value) filters.empresa_id = currentCompanyId.value;
-    const [list, stats, globalConfig] = await Promise.all([
-      listManifestadorNotes(session.sessionToken, filters),
-      getManifestadorSummary(session.sessionToken, currentCompanyId.value),
-      getManifestadorConfig(session.sessionToken),
+    const [list, stats, operational, fiscal] = await Promise.all([
+      listManifestadorNotes(session.sessionToken, { search: search.value, status: statusFilter.value, empresa_id: empresaId }),
+      getManifestadorSummary(session.sessionToken, empresaId),
+      getManifestadorConfig(session.sessionToken, empresaId),
+      getManifestadorCompanyConfig(session.sessionToken, empresaId),
     ]);
+    if (request !== requestId) return;
     rows.value = list;
     summary.value = stats;
-    resetConfig();
-    Object.assign(config, globalConfig, { smtp_password: "" });
-    if (currentCompanyId.value) {
-      const fiscalConfig = await getManifestadorCompanyConfig(session.sessionToken, currentCompanyId.value);
-      resetCompanyConfig();
-      Object.assign(companyConfig, fiscalConfig, { certificado_password: "" });
-    }
+    Object.assign(config, operational, { smtp_password: "" });
+    Object.assign(companyConfig, fiscal, { certificado_password: "" });
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "Falha ao carregar o Manifestador.";
+    if (request === requestId) error.value = err instanceof Error ? err.message : "Falha ao carregar o Manifestador.";
   } finally {
-    loading.value = false;
+    if (request === requestId) loading.value = false;
   }
 }
 
@@ -280,26 +281,6 @@ async function openLogs(row: GenericRecord) {
   logsModalOpen.value = true;
 }
 
-async function saveConfigForms() {
-  if (!session.sessionToken || !currentCompanyId.value) return;
-  saving.value = true;
-  try {
-    await saveManifestadorConfig(session.sessionToken, { ...config });
-    await saveManifestadorCompanyConfig(session.sessionToken, currentCompanyId.value, { ...companyConfig });
-    configModalOpen.value = false;
-    showSplashSuccess("Configurações do Manifestador salvas.");
-    await load();
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function testProvider() {
-  if (!session.sessionToken) return;
-  const result = await testManifestadorProvider(session.sessionToken);
-  showSplashInfo(text(result.message, providerConfigured.value ? "Endpoint configurado." : "Endpoint não configurado."));
-}
-
 function openAccountingModal() {
   defaultAccountingPeriod();
   accountingModalOpen.value = true;
@@ -330,28 +311,37 @@ async function sendAccounting() {
 }
 
 function openConfig() {
-  configModalOpen.value = true;
+  if (currentCompanyId.value) void router.push({ path: "/empresas", query: { empresa: currentCompanyId.value } });
 }
 
-watch(currentCompanyId, () => { void load(); });
+watch(currentCompanyId, () => {
+  manifestModalOpen.value = false;
+  logsModalOpen.value = false;
+  accountingModalOpen.value = false;
+  importModalOpen.value = false;
+  selectedNote.value = null;
+  logs.value = [];
+  void load();
+});
 onMounted(load);
 </script>
 
 <template>
   <BasePage title="Manifestação de NF-e" subtitle="Distribuição, consulta, manifestação, download e organização de NF-e destinadas." icon="file">
     <template #actions>
-      <button class="secondary" type="button" @click="openConfig">Configurações</button>
+      <button v-if="session.can('empresas:view')" class="secondary" type="button" :disabled="!currentCompanyId" @click="openConfig">Cadastro e parâmetros da empresa</button>
       <button class="secondary" type="button" :disabled="loading" @click="refresh">Atualizar</button>
       <button class="primary" type="button" :disabled="saving || !canManage" @click="obtainNotes">Obter notas</button>
     </template>
 
+    <p v-if="!currentCompanyId" role="status">Selecione uma empresa no seletor superior para consultar suas NF-e.</p>
     <div v-if="error" class="alert error">{{ error }}</div>
     <div v-if="!currentCompanyId" class="alert info">Selecione uma empresa ativa no topo para operar o Manifestador.</div>
 
     <div class="kpis">
       <div class="kpi"><strong>Total de NF-e</strong><span>{{ summary.total || 0 }}</span></div>
       <div class="kpi"><strong>Pendentes</strong><span>{{ summary.pending || 0 }}</span></div>
-      <div class="kpi"><strong>Manifestadas</strong><span>{{ summary.manifested || 0 }}</span></div>
+      <div class="kpi"><strong>Com registro de manifestação</strong><span>{{ summary.manifested || 0 }}</span></div>
       <div class="kpi"><strong>XML baixado</strong><span>{{ summary.downloaded || 0 }}</span></div>
     </div>
 
@@ -401,16 +391,7 @@ onMounted(load);
       </div>
     </AppModal>
 
-    <AppModal :open="configModalOpen" title="Configurações do Manifestador" subtitle="Parâmetros gerais e dados fiscais da empresa ativa." width="xl" @close="configModalOpen = false">
-      <div class="grid page-gap">
-        <div class="grid columns-2 mobile-columns-1">
-          <section class="modal-section-card grid page-gap"><div class="section-title">Consulta SEFAZ e adaptador externo</div><label class="checkbox-inline"><input v-model="config.verificar_automatico" type="checkbox" /> Consultar automaticamente</label><label class="checkbox-inline"><input v-model="config.download_automatico" type="checkbox" /> Baixar XML automaticamente</label><div class="field"><label>Intervalo (minutos)</label><input v-model.number="config.timer_minutos" type="number" min="1" /></div><div class="field"><label>Endpoint JSON externo (opcional)</label><input v-model="config.sefaz_endpoint" type="url" placeholder="https://servidor.local/manifestador" /></div><div class="field"><label>Endpoint SOAP DistribuiçãoDFe (opcional)</label><input v-model="config.sefaz_service_url" type="url" placeholder="Padrão nacional conforme ambiente" /></div><div class="field"><label>Timeout (segundos)</label><input v-model.number="config.sefaz_timeout_seconds" type="number" min="5" max="300" /></div><button class="secondary" type="button" @click="testProvider">Testar endpoint externo</button><div class="form-hint">Sem endpoint JSON, o aplicativo desktop usa o certificado A1/PFX e o endpoint SOAP configurado ou padrão do ambiente.</div></section>
-          <section class="modal-section-card grid page-gap"><div class="section-title">SMTP para contabilidade</div><div class="field"><label>Servidor SMTP</label><input v-model="config.smtp_host" type="text" /></div><div class="grid columns-2 mobile-columns-1"><div class="field"><label>Conta</label><input v-model="config.smtp_conta" type="text" /></div><div class="field"><label>Porta</label><input v-model.number="config.smtp_porta" type="number" min="1" /></div></div><div class="field"><label>Remetente</label><input v-model="config.smtp_remetente" type="text" /></div><div class="field"><label>E-mail de destino</label><input v-model="config.smtp_email" type="email" /></div><div class="field"><label>Senha SMTP {{ config.smtp_password_configured ? "(já configurada; informe somente para substituir)" : "" }}</label><input v-model="config.smtp_password" type="password" autocomplete="new-password" /></div><div class="form-hint">A senha é armazenada protegida localmente. O envio SMTP TLS completo depende do adaptador de correio configurado; a exportação ZIP permanece disponível.</div></section>
-        </div>
-        <section class="modal-section-card grid page-gap"><div class="section-title">Certificado e diretórios da empresa ativa</div><div class="grid columns-2 mobile-columns-1"><div class="field"><label>Caminho do certificado A1/PFX</label><input v-model="companyConfig.certificado_path" type="text" placeholder="C:\\certificados\\empresa.pfx" /></div><div class="field"><label>Senha do certificado {{ companyConfig.certificado_password_configured ? "(já configurada)" : "" }}</label><input v-model="companyConfig.certificado_password" type="password" autocomplete="new-password" /></div><div class="field"><label>UF</label><input v-model="companyConfig.uf" maxlength="2" /></div><div class="field"><label>Ambiente</label><select v-model="companyConfig.ambiente"><option value="production">Produção</option><option value="homologation">Homologação</option></select></div><div class="field"><label>Diretório de XML</label><input v-model="companyConfig.xml_path" type="text" /></div><div class="field"><label>Cópia de XML</label><input v-model="companyConfig.copia_xml_path" type="text" /></div><div class="field"><label>Diretório de respostas</label><input v-model="companyConfig.resposta_path" type="text" /></div><div class="field"><label>Número de série</label><input v-model="companyConfig.numero_serie" type="text" /></div></div><div class="form-hint">O certificado A1/PFX é usado nativamente no desktop para DistribuiçãoDFe e download. A manifestação de eventos continua exigindo assinatura/evento compatível com o provedor configurado; sem provedor, o histórico local é preservado e nada é falsamente enviado.</div></section>
-        <div class="actions modal-actions-footer"><button class="secondary" type="button" @click="configModalOpen = false">Cancelar</button><button class="primary" type="button" :disabled="saving || !canManage" @click="saveConfigForms">{{ saving ? "Salvando..." : "Salvar configurações" }}</button></div>
-      </div>
-    </AppModal>
+
 
     <AppModal :open="manifestModalOpen" title="Manifestar NF-e" subtitle="A justificativa é obrigatória para operação não realizada." width="md" @close="manifestModalOpen = false">
       <div class="grid page-gap"><div class="form-hint">Chave: {{ selectedNote?.chave || "-" }}</div><div class="field"><label>Evento</label><select v-model="manifestForm.evento"><option value="ciencia">Ciência da operação</option><option value="confirmacao">Confirmação da operação</option><option value="desconhecimento">Desconhecimento da operação</option><option value="nao_realizada">Operação não realizada</option></select></div><div v-if="manifestForm.evento === 'nao_realizada'" class="field"><label>Justificativa (mínimo 15 caracteres)</label><textarea v-model="manifestForm.justificativa" rows="5" /></div><div class="form-hint">Sem adaptador externo, o evento será marcado localmente para não perder o histórico. O envio fiscal real requer assinatura e retorno da SEFAZ.</div><div class="actions modal-actions-footer"><button class="secondary" type="button" @click="manifestModalOpen = false">Cancelar</button><button class="primary" type="button" :disabled="saving || !canManage" @click="submitManifest">{{ saving ? "Registrando..." : "Registrar manifestação" }}</button></div></div>

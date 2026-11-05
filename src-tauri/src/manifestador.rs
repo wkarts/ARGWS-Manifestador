@@ -1,4 +1,4 @@
-//! Núcleo funcional reconstruído do Manifestador Delphi.
+//! Núcleo funcional do Manifestador NF-e.
 //!
 //! A aplicação nova usa SQLite local, preserva a migração dos dados legados e
 //! oferece duas integrações explícitas: adaptador JSON compatível com ACBr/SEFAZ
@@ -321,6 +321,43 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     migrate_legacy_companies(conn)?;
     migrate_legacy_config(conn)?;
     migrate_legacy_notes(conn)?;
+    migrate_company_operation_config(conn)?;
+    Ok(())
+}
+
+fn migrate_company_operation_config(conn: &Connection) -> Result<(), String> {
+    let exists: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='manifestador_empresa_operacao')", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+    if exists {
+        return Ok(());
+    }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    tx.execute_batch(
+        r#"        CREATE TABLE IF NOT EXISTS manifestador_empresa_operacao (
+            empresa_id INTEGER PRIMARY KEY REFERENCES empresas(id) ON DELETE CASCADE,
+            last_check_at INTEGER,
+            verificar_automatico INTEGER NOT NULL DEFAULT 1,
+            download_automatico INTEGER NOT NULL DEFAULT 1,
+            timer_minutos INTEGER NOT NULL DEFAULT 60,
+            smtp_host TEXT,
+            smtp_conta TEXT,
+            smtp_remetente TEXT,
+            smtp_email TEXT,
+            smtp_senha_encrypted TEXT,
+            smtp_porta INTEGER NOT NULL DEFAULT 587,
+            sefaz_endpoint TEXT,
+            sefaz_service_url TEXT,
+            sefaz_timeout_seconds INTEGER NOT NULL DEFAULT 60,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );"#,
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO manifestador_empresa_operacao (empresa_id, verificar_automatico, download_automatico, timer_minutos, smtp_host, smtp_conta, smtp_remetente, smtp_email, smtp_senha_encrypted, smtp_porta, sefaz_endpoint, sefaz_service_url, sefaz_timeout_seconds, created_at, updated_at) SELECT e.id, g.verificar_automatico, g.download_automatico, g.timer_minutos, g.smtp_host, g.smtp_conta, g.smtp_remetente, g.smtp_email, g.smtp_senha_encrypted, g.smtp_porta, g.sefaz_endpoint, g.sefaz_service_url, g.sefaz_timeout_seconds, g.created_at, g.updated_at FROM empresas e CROSS JOIN manifestador_config g WHERE g.id = 1", []).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+fn ensure_operation_config(conn: &Connection, empresa_id: i64) -> Result<(), String> {
+    conn.execute("INSERT OR IGNORE INTO manifestador_empresa_operacao (empresa_id, created_at, updated_at) SELECT id, ?2, ?2 FROM empresas WHERE id = ?1", params![empresa_id, Utc::now().to_rfc3339()]).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -335,6 +372,7 @@ pub fn ensure_company_configs(conn: &Connection) -> Result<(), String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| format!("Falha ao mapear empresas do Manifestador: {err}"))?;
     for id in ids {
+        ensure_operation_config(conn, id)?;
         conn.execute(
             "INSERT OR IGNORE INTO manifestador_empresa_config (empresa_id, created_at, updated_at) VALUES (?1, ?2, ?2)",
             params![id, now],
@@ -1249,31 +1287,40 @@ pub fn summary(conn: &Connection, empresa_id: Option<i64>) -> Result<Value, Stri
     )
 }
 
-pub fn get_config(conn: &Connection) -> Result<Value, String> {
+pub fn get_config(conn: &Connection, empresa_id: i64) -> Result<Value, String> {
+    ensure_operation_config(conn, empresa_id)?;
     let mut result = conn
         .query_row(
-            "SELECT * FROM manifestador_config WHERE id = 1",
-            [],
+            "SELECT * FROM manifestador_empresa_operacao WHERE empresa_id = ?1",
+            [empresa_id],
             |row| Ok(Value::Object(row_to_json_map(row)?)),
         )
         .optional()
         .map_err(|err| format!("Falha ao carregar configuração do Manifestador: {err}"))?
         .ok_or_else(|| "Configuração do Manifestador não encontrada.".to_string())?;
     if let Value::Object(map) = &mut result {
-        map.remove("smtp_senha_encrypted");
+        let password_configured = map
+            .remove("smtp_senha_encrypted")
+            .and_then(|v| v.as_str().map(|s| !s.trim().is_empty()))
+            .unwrap_or(false);
         map.insert(
             "smtp_password_configured".to_string(),
-            Value::Bool(has_secret(conn, "smtp_senha_encrypted", None)?),
+            Value::Bool(password_configured),
         );
     }
     Ok(result)
 }
 
-pub fn save_config(conn: &Connection, payload: &Map<String, Value>) -> Result<Value, String> {
+pub fn save_config(
+    conn: &Connection,
+    empresa_id: i64,
+    payload: &Map<String, Value>,
+) -> Result<Value, String> {
+    ensure_operation_config(conn, empresa_id)?;
     let existing_password: Option<String> = conn
         .query_row(
-            "SELECT smtp_senha_encrypted FROM manifestador_config WHERE id = 1",
-            [],
+            "SELECT smtp_senha_encrypted FROM manifestador_empresa_operacao WHERE empresa_id = ?1",
+            [empresa_id],
             |row| row.get(0),
         )
         .optional()
@@ -1290,11 +1337,12 @@ pub fn save_config(conn: &Connection, payload: &Map<String, Value>) -> Result<Va
     } else {
         Some(encrypt_text(&machine_key(), &password))
     };
-    conn.execute("UPDATE manifestador_config SET verificar_automatico = ?1, download_automatico = ?2, timer_minutos = ?3, smtp_host = ?4, smtp_conta = ?5, smtp_remetente = ?6, smtp_email = ?7, smtp_senha_encrypted = ?8, smtp_porta = ?9, sefaz_endpoint = ?10, sefaz_service_url = ?11, sefaz_timeout_seconds = ?12, updated_at = ?13 WHERE id = 1", params![value_bool(payload.get("verificar_automatico"), true), value_bool(payload.get("download_automatico"), true), value_i64(payload.get("timer_minutos")).unwrap_or(60).max(1), empty_to_none(&value_string(payload.get("smtp_host"))), empty_to_none(&value_string(payload.get("smtp_conta"))), empty_to_none(&value_string(payload.get("smtp_remetente"))), empty_to_none(&value_string(payload.get("smtp_email"))), encrypted_password, value_i64(payload.get("smtp_porta")).unwrap_or(587).max(1), empty_to_none(&value_string(payload.get("sefaz_endpoint"))), empty_to_none(&value_string(payload.get("sefaz_service_url"))), value_i64(payload.get("sefaz_timeout_seconds")).unwrap_or(DEFAULT_TIMEOUT_SECONDS).clamp(5, 300), Utc::now().to_rfc3339()]).map_err(|err| format!("Falha ao salvar configuração do Manifestador: {err}"))?;
-    get_config(conn)
+    conn.execute("UPDATE manifestador_empresa_operacao SET verificar_automatico = ?1, download_automatico = ?2, timer_minutos = ?3, smtp_host = ?4, smtp_conta = ?5, smtp_remetente = ?6, smtp_email = ?7, smtp_senha_encrypted = ?8, smtp_porta = ?9, sefaz_endpoint = ?10, sefaz_service_url = ?11, sefaz_timeout_seconds = ?12, updated_at = ?13 WHERE empresa_id = ?14", params![value_bool(payload.get("verificar_automatico"), true), value_bool(payload.get("download_automatico"), true), value_i64(payload.get("timer_minutos")).unwrap_or(60).max(1), empty_to_none(&value_string(payload.get("smtp_host"))), empty_to_none(&value_string(payload.get("smtp_conta"))), empty_to_none(&value_string(payload.get("smtp_remetente"))), empty_to_none(&value_string(payload.get("smtp_email"))), encrypted_password, value_i64(payload.get("smtp_porta")).unwrap_or(587).max(1), empty_to_none(&value_string(payload.get("sefaz_endpoint"))), empty_to_none(&value_string(payload.get("sefaz_service_url"))), value_i64(payload.get("sefaz_timeout_seconds")).unwrap_or(DEFAULT_TIMEOUT_SECONDS).clamp(5, 300), Utc::now().to_rfc3339(), empresa_id]).map_err(|err| format!("Falha ao salvar configuração do Manifestador: {err}"))?;
+    get_config(conn, empresa_id)
 }
 
 pub fn get_company_config(conn: &Connection, empresa_id: i64) -> Result<Value, String> {
+    conn.execute("INSERT OR IGNORE INTO manifestador_empresa_config (empresa_id, created_at, updated_at) SELECT id, ?2, ?2 FROM empresas WHERE id = ?1", params![empresa_id, Utc::now().to_rfc3339()]).map_err(|e| e.to_string())?;
     let mut result = conn
         .query_row(
             "SELECT * FROM manifestador_empresa_config WHERE empresa_id = ?1",
@@ -1323,6 +1371,11 @@ pub fn save_company_config(
     empresa_id: i64,
     payload: &Map<String, Value>,
 ) -> Result<Value, String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let conn = &tx;
+    if let Some(operation) = payload.get("operation_config").and_then(Value::as_object) {
+        save_config(conn, empresa_id, operation)?;
+    }
     let current: Option<String> = conn.query_row("SELECT certificado_password_encrypted FROM manifestador_empresa_config WHERE empresa_id = ?1", [empresa_id], |row| row.get(0)).optional().map_err(|err| format!("Falha ao carregar senha do certificado: {err}"))?.flatten();
     let password = value_string(payload.get("certificado_password"));
     let password = if password.is_empty() {
@@ -1334,8 +1387,10 @@ pub fn save_company_config(
         ))
     };
     let now = Utc::now().to_rfc3339();
-    conn.execute("INSERT INTO manifestador_empresa_config (empresa_id, certificado_path, certificado_password_encrypted, uf, xml_path, numero_serie, copia_xml_path, resposta_path, ambiente, nsu, data_manifestacao, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, COALESCE(?10, '0'), ?11, ?12, ?12) ON CONFLICT(empresa_id) DO UPDATE SET certificado_path=excluded.certificado_path, certificado_password_encrypted=excluded.certificado_password_encrypted, uf=excluded.uf, xml_path=excluded.xml_path, numero_serie=excluded.numero_serie, copia_xml_path=excluded.copia_xml_path, resposta_path=excluded.resposta_path, ambiente=excluded.ambiente, nsu=excluded.nsu, data_manifestacao=excluded.data_manifestacao, updated_at=excluded.updated_at", params![empresa_id, empty_to_none(&value_string(payload.get("certificado_path"))), password, empty_to_none(&value_string(payload.get("uf"))), empty_to_none(&value_string(payload.get("xml_path"))), empty_to_none(&value_string(payload.get("numero_serie"))), empty_to_none(&value_string(payload.get("copia_xml_path"))), empty_to_none(&value_string(payload.get("resposta_path"))), default_text(&value_string(payload.get("ambiente")), "production"), empty_to_none(&value_string(payload.get("nsu"))), empty_to_none(&value_string(payload.get("data_manifestacao"))), now]).map_err(|err| format!("Falha ao salvar configuração fiscal: {err}"))?;
-    get_company_config(conn, empresa_id)
+    conn.execute("INSERT INTO manifestador_empresa_config (empresa_id, certificado_path, certificado_password_encrypted, uf, xml_path, numero_serie, copia_xml_path, resposta_path, ambiente, nsu, data_manifestacao, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, COALESCE(?10, '0'), ?11, ?12, ?12) ON CONFLICT(empresa_id) DO UPDATE SET certificado_path=excluded.certificado_path, certificado_password_encrypted=excluded.certificado_password_encrypted, uf=excluded.uf, xml_path=excluded.xml_path, numero_serie=excluded.numero_serie, copia_xml_path=excluded.copia_xml_path, resposta_path=excluded.resposta_path, ambiente=excluded.ambiente, nsu=COALESCE(?10, manifestador_empresa_config.nsu), data_manifestacao=COALESCE(?11, manifestador_empresa_config.data_manifestacao), updated_at=excluded.updated_at", params![empresa_id, empty_to_none(&value_string(payload.get("certificado_path"))), password, empty_to_none(&value_string(payload.get("uf"))), empty_to_none(&value_string(payload.get("xml_path"))), empty_to_none(&value_string(payload.get("numero_serie"))), empty_to_none(&value_string(payload.get("copia_xml_path"))), empty_to_none(&value_string(payload.get("resposta_path"))), default_text(&value_string(payload.get("ambiente")), "production"), empty_to_none(&value_string(payload.get("nsu"))), empty_to_none(&value_string(payload.get("data_manifestacao"))), now]).map_err(|err| format!("Falha ao salvar configuração fiscal: {err}"))?;
+    let result = get_company_config(conn, empresa_id)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(result)
 }
 
 fn has_secret(conn: &Connection, column: &str, empresa_id: Option<i64>) -> Result<bool, String> {
@@ -1953,8 +2008,8 @@ pub fn send_accounting_email(
         .map_err(|err| format!("Falha ao ler ZIP preparado para e-mail: {err}"))?;
     let (host, username, sender_name, sender_email, password_cipher, port): SmtpConfigRow = conn
         .query_row(
-            "SELECT smtp_host, smtp_conta, smtp_remetente, smtp_email, smtp_senha_encrypted, smtp_porta FROM manifestador_config WHERE id = 1",
-            [],
+            "SELECT smtp_host, smtp_conta, smtp_remetente, smtp_email, smtp_senha_encrypted, smtp_porta FROM manifestador_empresa_operacao WHERE empresa_id = ?1",
+            [empresa_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
         )
         .map_err(|err| format!("Falha ao carregar configuração SMTP: {err}"))?;
@@ -1994,11 +2049,14 @@ pub fn send_accounting_email(
     }))
 }
 
-pub fn provider_endpoint(conn: &Connection) -> Result<Option<(String, u64)>, String> {
+pub fn provider_endpoint(
+    conn: &Connection,
+    empresa_id: i64,
+) -> Result<Option<(String, u64)>, String> {
     let row: Option<(Option<String>, i64)> = conn
         .query_row(
-            "SELECT sefaz_endpoint, sefaz_timeout_seconds FROM manifestador_config WHERE id = 1",
-            [],
+            "SELECT sefaz_endpoint, sefaz_timeout_seconds FROM manifestador_empresa_operacao WHERE empresa_id = ?1",
+            [empresa_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
@@ -2253,7 +2311,7 @@ fn native_company_config(
 ) -> Result<NativeCompanyConfig, String> {
     let row: NativeCompanyConfigRow = conn
         .query_row(
-            "SELECT e.documento, c.certificado_path, c.certificado_password_encrypted, c.uf, c.ambiente, c.nsu, g.sefaz_service_url, g.sefaz_timeout_seconds FROM empresas e INNER JOIN manifestador_empresa_config c ON c.empresa_id = e.id INNER JOIN manifestador_config g ON g.id = 1 WHERE e.id = ?1 AND e.ativo = 1",
+            "SELECT e.documento, c.certificado_path, c.certificado_password_encrypted, c.uf, c.ambiente, c.nsu, g.sefaz_service_url, g.sefaz_timeout_seconds FROM empresas e INNER JOIN manifestador_empresa_config c ON c.empresa_id = e.id INNER JOIN manifestador_empresa_operacao g ON g.empresa_id = e.id WHERE e.id = ?1 AND e.ativo = 1",
             [empresa_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?)),
         )
@@ -2495,7 +2553,12 @@ pub fn call_provider(
     action: &str,
     payload: &Value,
 ) -> Result<Option<Value>, String> {
-    let Some((endpoint, timeout)) = provider_endpoint(conn)? else {
+    let empresa_id = payload
+        .get("empresa_id")
+        .and_then(Value::as_i64)
+        .filter(|id| *id > 0)
+        .ok_or("Selecione uma empresa para acessar o provedor fiscal.")?;
+    let Some((endpoint, timeout)) = provider_endpoint(conn, empresa_id)? else {
         return Ok(None);
     };
     let client = reqwest::blocking::Client::builder()
@@ -2524,24 +2587,14 @@ pub fn call_provider(
     Ok(Some(value))
 }
 
-/// Executa uma rodada do timer herdado do Delphi. A rodada é deliberadamente
+/// Executa uma rodada do agendamento por empresa. A rodada é deliberadamente
 /// idempotente: o NSU e a chave são preservados no banco, e cada documento
 /// recebido pela integração nativa ou pelo adaptador é atualizado em vez de duplicado.
-pub fn automatic_cycle(conn: &mut Connection, data_dir: &Path) -> Result<Value, String> {
-    let (enabled, download_automatically): (i64, i64) = conn
-        .query_row(
-            "SELECT verificar_automatico, download_automatico FROM manifestador_config WHERE id = 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|err| format!("Falha ao carregar timer do Manifestador: {err}"))?;
-    if enabled == 0 {
-        return Ok(
-            json!({"ok": true, "skipped": true, "reason": "automatic_check_disabled", "imported": 0}),
-        );
-    }
-    let external_provider_configured = provider_endpoint(conn)?.is_some();
+fn claim_company_cycle(conn: &Connection, empresa_id: i64, now: i64) -> Result<bool, String> {
+    conn.execute("UPDATE manifestador_empresa_operacao SET last_check_at = ?2 WHERE empresa_id = ?1 AND verificar_automatico <> 0 AND (last_check_at IS NULL OR last_check_at <= ?2 - MAX(1, timer_minutos) * 60)", params![empresa_id, now]).map(|count| count > 0).map_err(|e| e.to_string())
+}
 
+pub fn automatic_cycle(conn: &mut Connection, data_dir: &Path) -> Result<Value, String> {
     let company_ids = {
         let mut stmt = conn
             .prepare("SELECT id FROM empresas WHERE ativo = 1 ORDER BY id")
@@ -2556,6 +2609,13 @@ pub fn automatic_cycle(conn: &mut Connection, data_dir: &Path) -> Result<Value, 
     let mut imported = 0i64;
     let mut companies = 0i64;
     for company_id in company_ids {
+        ensure_operation_config(conn, company_id)?;
+        // Claim only due companies. Persist attempts too, so failures cannot hammer SEFAZ.
+        if !claim_company_cycle(conn, company_id, Utc::now().timestamp())? {
+            continue;
+        }
+        let download_automatically: i64 = conn.query_row("SELECT download_automatico FROM manifestador_empresa_operacao WHERE empresa_id = ?1", [company_id], |r| r.get(0)).map_err(|e| e.to_string())?;
+        let external_provider_configured = provider_endpoint(conn, company_id)?.is_some();
         let request = json!({"empresa_id": company_id, "automatico": true});
         let response = if let Some(response) = call_provider(conn, "obter_notas", &request)? {
             response
@@ -2660,11 +2720,11 @@ pub fn read_certificate_password(
 }
 
 #[allow(dead_code)]
-pub fn read_smtp_password(conn: &Connection) -> Result<Option<String>, String> {
+pub fn read_smtp_password(conn: &Connection, empresa_id: i64) -> Result<Option<String>, String> {
     let cipher: Option<String> = conn
         .query_row(
-            "SELECT smtp_senha_encrypted FROM manifestador_config WHERE id = 1",
-            [],
+            "SELECT smtp_senha_encrypted FROM manifestador_empresa_operacao WHERE empresa_id = ?1",
+            [empresa_id],
             |row| row.get(0),
         )
         .optional()
@@ -2688,6 +2748,118 @@ pub fn smtp_probe(host: &str, port: u16) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::{distribution_summary_from_xml, parse_nfe_xml};
+
+    fn company_fixture() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON; CREATE TABLE empresas (id INTEGER PRIMARY KEY, ativo INTEGER); INSERT INTO empresas VALUES (1,1),(2,1);").unwrap();
+        super::migrate(&conn).unwrap();
+        super::ensure_company_configs(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn migrates_shared_settings_once_and_isolates_companies() {
+        let conn = company_fixture();
+        conn.execute_batch("DROP TABLE manifestador_empresa_operacao; UPDATE manifestador_config SET smtp_host='original', timer_minutos=120;").unwrap();
+        let encrypted = crate::security::encrypt_text(&super::machine_key(), "old-secret");
+        conn.execute(
+            "UPDATE manifestador_config SET smtp_senha_encrypted=?1",
+            [encrypted],
+        )
+        .unwrap();
+        super::migrate_company_operation_config(&conn).unwrap();
+        assert_eq!(
+            super::get_config(&conn, 1).unwrap()["smtp_host"],
+            "original"
+        );
+        let mut payload = super::get_config(&conn, 1)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .clone();
+        payload.insert("smtp_host".into(), serde_json::json!("company-one"));
+        payload.insert("smtp_password".into(), serde_json::json!(""));
+        payload.insert(
+            "sefaz_endpoint".into(),
+            serde_json::json!("https://one.invalid"),
+        );
+        super::save_config(&conn, 1, &payload).unwrap();
+        super::migrate(&conn).unwrap();
+        assert_eq!(
+            super::get_config(&conn, 1).unwrap()["smtp_host"],
+            "company-one"
+        );
+        assert_eq!(
+            super::get_config(&conn, 2).unwrap()["smtp_host"],
+            "original"
+        );
+        assert_eq!(
+            super::read_smtp_password(&conn, 1).unwrap().as_deref(),
+            Some("old-secret")
+        );
+        assert!(super::get_config(&conn, 1)
+            .unwrap()
+            .get("smtp_senha_encrypted")
+            .is_none());
+        assert_eq!(
+            super::provider_endpoint(&conn, 1).unwrap().unwrap().0,
+            "https://one.invalid"
+        );
+        assert!(super::provider_endpoint(&conn, 2).unwrap().is_none());
+        conn.execute("INSERT INTO empresas VALUES(3,1)", [])
+            .unwrap();
+        assert!(super::get_config(&conn, 3).unwrap()["smtp_host"].is_null());
+        assert!(super::get_company_config(&conn, 3).is_ok());
+    }
+
+    #[test]
+    fn combined_company_save_is_atomic_and_preserves_secrets() {
+        let conn = company_fixture();
+        let original = serde_json::json!({"certificado_password":"certificate-secret", "uf":"SP", "nsu":"42", "operation_config":{"smtp_password":"mail-secret", "smtp_host":"one"}});
+        super::save_company_config(&conn, 1, original.as_object().unwrap()).unwrap();
+        let mut payload = super::get_company_config(&conn, 1)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .clone();
+        payload.insert(
+            "operation_config".into(),
+            serde_json::json!({"smtp_host":"changed", "smtp_password":""}),
+        );
+        conn.execute_batch("CREATE TRIGGER fail_company BEFORE UPDATE ON manifestador_empresa_config BEGIN SELECT RAISE(ABORT, 'test rollback'); END;").unwrap();
+        assert!(super::save_company_config(&conn, 1, &payload).is_err());
+        assert_eq!(super::get_config(&conn, 1).unwrap()["smtp_host"], "one");
+        conn.execute_batch("DROP TRIGGER fail_company").unwrap();
+        super::save_company_config(&conn, 1, &payload).unwrap();
+        assert_eq!(super::get_company_config(&conn, 1).unwrap()["nsu"], "42");
+        assert_eq!(
+            super::read_smtp_password(&conn, 1).unwrap().as_deref(),
+            Some("mail-secret")
+        );
+        assert!(
+            super::get_company_config(&conn, 1).unwrap()["certificado_password_configured"]
+                .as_bool()
+                .unwrap()
+        );
+        assert!(super::get_config(&conn, 2).unwrap()["smtp_host"].is_null());
+        payload.remove("nsu");
+        payload.remove("data_manifestacao");
+        conn.execute("UPDATE manifestador_empresa_config SET nsu='99', data_manifestacao='latest' WHERE empresa_id=1", []).unwrap();
+        super::save_company_config(&conn, 1, &payload).unwrap();
+        let saved = super::get_company_config(&conn, 1).unwrap();
+        assert_eq!(saved["nsu"], "99");
+        assert_eq!(saved["data_manifestacao"], "latest");
+    }
+
+    #[test]
+    fn automatic_schedule_obeys_each_company_interval_and_enabled_flag() {
+        let conn = company_fixture();
+        conn.execute_batch("UPDATE manifestador_empresa_operacao SET timer_minutos=5 WHERE empresa_id=1; UPDATE manifestador_empresa_operacao SET verificar_automatico=0 WHERE empresa_id=2;").unwrap();
+        assert!(super::claim_company_cycle(&conn, 1, 1000).unwrap());
+        assert!(!super::claim_company_cycle(&conn, 1, 1299).unwrap());
+        assert!(super::claim_company_cycle(&conn, 1, 1300).unwrap());
+        assert!(!super::claim_company_cycle(&conn, 2, 1300).unwrap());
+    }
 
     #[test]
     fn importa_xml_minimo_com_chave_itens_e_totais() {

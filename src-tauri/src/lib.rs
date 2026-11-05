@@ -359,14 +359,6 @@ fn start_manifestador_background(state: SharedState) {
             let interval_minutes = match state.db_path() {
                 Ok(db_path) => match crate::db::open_connection(&db_path) {
                     Ok(mut conn) => {
-                        let interval = conn
-                            .query_row(
-                                "SELECT timer_minutos FROM manifestador_config WHERE id = 1",
-                                [],
-                                |row| row.get::<_, i64>(0),
-                            )
-                            .unwrap_or(60)
-                            .clamp(1, 24 * 60);
                         match state.data_dir() {
                             Ok(data_dir) => {
                                 if let Err(err) =
@@ -379,7 +371,7 @@ fn start_manifestador_background(state: SharedState) {
                                 eprintln!("Falha ao resolver diretório do ciclo automático: {err}")
                             }
                         }
-                        interval
+                        1
                     }
                     Err(err) => {
                         eprintln!("Falha ao abrir banco para o ciclo automático: {err}");

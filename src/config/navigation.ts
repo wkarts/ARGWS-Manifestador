@@ -16,10 +16,10 @@ export interface MenuItemConfig {
 }
 
 export const menuItems: MenuItemConfig[] = [
-  { title: "Dashboard", route: "/", permission: "dashboard:view", section: "dashboard" },
+  { title: "Visão fiscal", route: "/", permission: "dashboard:view", section: "dashboard" },
 
   { title: "Empresas", route: "/empresas", permission: "empresas:view", section: "cadastro" },
-  { title: "Manifestação NF-e", route: "/manifestador", permission: "manifestador:view", feature: "manifestador", section: "ferramentas", description: "Consultar, importar, manifestar, baixar e exportar NF-e destinadas." },
+  { title: "Manifestação NF-e", route: "/manifestador", permission: "manifestador:view", feature: "manifestador", section: "dashboard", description: "Consultar, importar, manifestar, baixar e exportar NF-e destinadas." },
   ...Object.values(entityConfigs).map((entity) => ({
     title: entity.title,
     route: entity.route,
@@ -31,7 +31,7 @@ export const menuItems: MenuItemConfig[] = [
   { title: "Usuários", route: "/usuarios", permission: "usuarios:view", section: "sistema" },
   { title: "Perfis de usuários", route: "/perfis", permission: "perfis:view", section: "sistema" },
   { title: "Logs", route: "/logs", permission: "config:view", feature: "logs", section: "sistema" },
-  { title: "Parâmetros", desktopOnly: true, route: "/sistema", permission: "config:view", feature: "systemSettings", section: "sistema" },
+  { title: "Configurações da aplicação", desktopOnly: true, route: "/sistema", permission: "config:view", feature: "systemSettings", section: "sistema" },
   { title: "Banco de dados", route: "/sistema/banco", permission: "config:view", feature: "databaseSettings", section: "sistema" },
   { title: "Licenciamento", route: "/licenciamento", permission: "config:view", feature: "licensing", section: "sistema" },
   { title: "Diagnósticos", desktopOnly: true, route: "/runtime", permission: "config:view", section: "sistema" },

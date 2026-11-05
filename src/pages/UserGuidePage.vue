@@ -1,37 +1,30 @@
 <script setup lang="ts">
 import BasePage from "../components/base/BasePage.vue";
 import BaseSectionCard from "../components/base/BaseSectionCard.vue";
-import { appFeatures } from "../config/projectConfig";
 </script>
-
 <template>
-  <BasePage title="Guia do usuário" subtitle="Guia funcional ajustado aos módulos ativos neste projeto.">
+  <BasePage title="Guia do Manifestador NF-e" subtitle="Da configuração da empresa à entrega de XMLs à contabilidade.">
     <div class="grid columns-2 mobile-columns-1">
-      <BaseSectionCard title="Primeiro acesso">
-        <ul class="summary-list">
-          <li>Acesse com o usuário inicial documentado para implantação.</li>
-          <li>Troque a senha no primeiro uso operacional.</li>
-          <li>Cadastre empresas e vincule usuários aos perfis corretos.</li>
-        </ul>
+      <BaseSectionCard title="1. Cadastre e selecione a empresa">
+        <p>Em Empresas, informe os dados fiscais e salve o cadastro. Abra a empresa para configurar certificado A1/PFX, UF, ambiente, diretórios, consulta e SMTP. Os parâmetros pertencem à empresa aberta no cadastro.</p>
+        <p>Selecione a empresa no topo da aplicação antes de trabalhar com suas notas. Confira se o ambiente é produção ou homologação.</p>
       </BaseSectionCard>
-      <BaseSectionCard title="Controle de acesso">
-        <ul class="summary-list">
-          <li>Usuários controlam credenciais e vínculos.</li>
-          <li>Perfis organizam permissões por função.</li>
-          <li>Menus respeitam permissões e módulos ativos.</li>
-        </ul>
+      <BaseSectionCard title="2. Obtenha os documentos">
+        <p>Em Manifestação NF-e, importe XMLs ou use Obter notas. A consulta nativa usa certificado A1/PFX no desktop; o adaptador externo deve ser configurado quando utilizado. Ter um endpoint preenchido não comprova conectividade.</p>
+        <p>O painel fiscal apresenta dados da base da empresa selecionada. Uma lista vazia indica ausência de registros, não ausência de documentos na SEFAZ.</p>
       </BaseSectionCard>
-      <BaseSectionCard v-if="appFeatures.licensing" title="Licenciamento">
-        <p class="muted-text">O licenciamento pode operar local/offline e pode ser ocultado em projetos que não usam licença.</p>
+      <BaseSectionCard title="3. Acompanhe as manifestações">
+        <p>Abra a nota, confira o evento e a justificativa antes de manifestar. Consulte seu histórico para verificar resposta e protocolo.</p>
+        <p>Sem provedor compatível, o sistema registra a solicitação localmente; isso não confirma envio ou autorização pela SEFAZ.</p>
       </BaseSectionCard>
-      <BaseSectionCard v-if="appFeatures.logs" title="Logs">
-        <p class="muted-text">Use logs para auditoria técnica, diagnóstico de sessão, navegação e falhas administrativas.</p>
+      <BaseSectionCard title="4. Prepare XMLs para a contabilidade">
+        <p>Baixe os XMLs completos disponíveis. Exporte um ZIP ou informe período e destinatário em Enviar contabilidade. O envio usa o SMTP da empresa selecionada e depende da disponibilidade do serviço.</p>
       </BaseSectionCard>
-      <BaseSectionCard v-if="appFeatures.internalApi" title="API interna">
-        <p class="muted-text">A API interna expõe health check, versão, status e endpoints próprios do projeto quando habilitada.</p>
+      <BaseSectionCard title="Acesso e segurança">
+        <p>Troque a senha inicial e vincule usuários às empresas e perfis necessários. Permissões de consulta e operação fiscal são distintas. Senhas de SMTP e certificado não são devolvidas nos formulários; deixe em branco para manter as existentes.</p>
       </BaseSectionCard>
-      <BaseSectionCard v-if="appFeatures.tray" title="Tray icon">
-        <p class="muted-text">O tray pode controlar restauração da janela, API interna e serviços quando o projeto habilitar esses recursos.</p>
+      <BaseSectionCard title="Diagnóstico">
+        <p>Use o histórico da nota para retornos fiscais e Logs para falhas da aplicação. As áreas de integrações e serviços são administrativas; sua disponibilidade no menu não indica que estejam conectadas.</p>
       </BaseSectionCard>
     </div>
   </BasePage>
