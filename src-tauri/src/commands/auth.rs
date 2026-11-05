@@ -763,7 +763,8 @@ fn required_permission(command: &str) -> Option<&'static str> {
         | "manifestador_note_get"
         | "manifestador_note_logs"
         | "manifestador_provider_test" => Some("manifestador:view"),
-        "manifestador_config_save"
+        "manifestador_certificate_import"
+        | "manifestador_config_save"
         | "manifestador_company_config_save"
         | "manifestador_import_xml"
         | "manifestador_obter_notas"

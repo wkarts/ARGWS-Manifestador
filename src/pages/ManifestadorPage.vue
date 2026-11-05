@@ -239,7 +239,7 @@ async function fiscal(row: GenericRecord, operation: "validate" | "danfe") {
     link.href = url; link.download = String(result.file_name);
     document.body.appendChild(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    showSplashSuccess(`DANFE PDF gerado pela ACBrLib e salvo no servidor: ${String(result.path)}. A situação atual na SEFAZ não foi consultada.`);
+    showSplashSuccess(`DANFE PDF gerado localmente e salvo em: ${String(result.path)}. A situação atual na SEFAZ não foi consultada.`);
   } catch (err) { showSplashWarning(err instanceof Error ? err.message : String(err)); }
   finally { saving.value = false; }
 }
@@ -331,7 +331,7 @@ onMounted(load);
 </script>
 
 <template>
-  <BasePage title="Manifestação de NF-e" subtitle="Distribuição, consulta, manifestação, download e organização de NF-e destinadas." icon="file">
+  <BasePage title="NF-e e NFC-e" subtitle="Documentos fiscais, XML, DANFE e manifestação do destinatário de NF-e." icon="file">
     <p class="form-hint" role="status">{{ fiscalStatus.message }}</p>
     <template #actions>
       <button v-if="session.can('empresas:view')" class="secondary" type="button" :disabled="!currentCompanyId" @click="openConfig">Cadastro e parâmetros da empresa</button>
@@ -344,7 +344,7 @@ onMounted(load);
     <div v-if="!currentCompanyId" class="alert info">Selecione uma empresa ativa no topo para operar o Manifestador.</div>
 
     <div class="kpis">
-      <div class="kpi"><strong>Total de NF-e</strong><span>{{ summary.total || 0 }}</span></div>
+      <div class="kpi"><strong>Total de documentos</strong><span>{{ summary.total || 0 }}</span></div>
       <div class="kpi"><strong>Pendentes</strong><span>{{ summary.pending || 0 }}</span></div>
       <div class="kpi"><strong>Com registro de manifestação</strong><span>{{ summary.manifested || 0 }}</span></div>
       <div class="kpi"><strong>XML baixado</strong><span>{{ summary.downloaded || 0 }}</span></div>
@@ -353,7 +353,7 @@ onMounted(load);
     <div class="card grid page-gap">
       <div class="toolbar">
         <div>
-          <h3>Notas fiscais destinadas</h3>
+          <h3>Documentos fiscais da empresa</h3>
           <p class="muted">O isolamento segue a empresa ativa e os vínculos do usuário autenticado.</p>
         </div>
         <div class="actions align-end">
@@ -370,19 +370,19 @@ onMounted(load);
 
       <div class="table-wrap">
         <table>
-          <thead><tr><th>NF-e</th><th>Emitente</th><th>Emissão</th><th>Valor</th><th>Manifestação</th><th>Download</th><th>NSU</th><th>Ações</th></tr></thead>
+          <thead><tr><th>Documento</th><th>Emitente</th><th>Emissão</th><th>Valor</th><th>Manifestação</th><th>Download</th><th>NSU</th><th>Ações</th></tr></thead>
           <tbody>
             <tr v-for="row in rows" :key="number(row.id)">
-              <td><strong>{{ row.numero || "-" }}</strong><div class="muted-row">Série {{ row.serie || "-" }} · {{ row.chave || "sem chave" }}</div></td>
+              <td><strong>{{ text(row.chave).slice(20, 22) === "65" ? "NFC-e" : "NF-e" }} {{ row.numero || "-" }}</strong><div class="muted-row">Série {{ row.serie || "-" }} · {{ row.chave || "sem chave" }}</div></td>
               <td>{{ row.nome || "-" }}<div class="muted-row">{{ row.cnpj || "-" }}</div></td>
               <td>{{ dateTime(row.emissao) }}</td>
               <td>{{ money(row.valor) }}</td>
               <td><span class="status-pill">{{ statusLabel(row) }}</span></td>
               <td>{{ Number(row.download) === 1 ? "Sim" : "Não" }}</td>
               <td>{{ row.nsu || "0" }}</td>
-              <td><div class="compact-actions actions"><button class="secondary" type="button" :disabled="saving" @click="fiscal(row, 'danfe')">DANFE PDF</button><button class="secondary" type="button" :disabled="saving" @click="fiscal(row, 'validate')">Validar XSD</button><button class="secondary" type="button" :disabled="!canManage" @click="download(row)">XML</button><button class="secondary" type="button" :disabled="!canManage" @click="openManifest(row)">Manifestar</button><button class="secondary" type="button" @click="openLogs(row)">Histórico</button></div></td>
+              <td><div class="compact-actions actions"><button class="secondary" type="button" :disabled="saving" @click="fiscal(row, 'danfe')">DANFE PDF</button><button class="secondary" type="button" :disabled="saving" @click="fiscal(row, 'validate')">Validar XSD</button><button class="secondary" type="button" :disabled="!canManage" @click="download(row)">XML</button><button class="secondary" type="button" :disabled="!canManage || text(row.chave).slice(20, 22) === '65'" :title="text(row.chave).slice(20, 22) === '65' ? 'Manifestação do destinatário não se aplica à NFC-e' : 'Manifestar NF-e'" @click="openManifest(row)">Manifestar</button><button class="secondary" type="button" @click="openLogs(row)">Histórico</button></div></td>
             </tr>
-            <tr v-if="!rows.length"><td colspan="8" class="empty-cell">{{ loading ? "Carregando notas..." : "Nenhuma NF-e encontrada para a empresa ativa." }}</td></tr>
+            <tr v-if="!rows.length"><td colspan="8" class="empty-cell">{{ loading ? "Carregando notas..." : "Nenhum documento encontrado para a empresa ativa." }}</td></tr>
           </tbody>
         </table>
       </div>

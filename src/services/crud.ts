@@ -426,3 +426,10 @@ export function getFiscalEngineStatus(sessionToken: string): Promise<GenericReco
 export function processFiscalNote(sessionToken: string, empresaId: number, notaId: number, operation: "validate" | "danfe"): Promise<GenericRecord> {
   return invokeCommand("manifestador_fiscal_process", { session_token: sessionToken, empresa_id: empresaId, nota_id: notaId, operation });
 }
+
+export function importCompanyCertificate(sessionToken: string, empresaId: number, fileName: string, certificateSecretBase64: string): Promise<GenericRecord> {
+  return invokeCommand("manifestador_certificate_import", { session_token: sessionToken, empresa_id: empresaId, file_name: fileName, certificate_secret_base64: certificateSecretBase64 });
+}
+export function listInstalledCertificates(sessionToken: string, empresaId: number): Promise<GenericRecord> {
+  return invokeCommand("manifestador_certificates_installed", { session_token: sessionToken, empresa_id: empresaId });
+}

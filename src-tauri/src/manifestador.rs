@@ -843,8 +843,8 @@ fn path_value(values: &HashMap<String, String>, suffixes: &[&str]) -> String {
 }
 
 pub fn parse_nfe_xml(xml: &str) -> Result<ParsedNfe, String> {
-    if xml.trim().is_empty() {
-        return Err("O XML da NF-e está vazio.".to_string());
+    if xml.trim().is_empty() || xml.len() > 8 * 1024 * 1024 {
+        return Err("O XML está vazio ou excede 8 MiB.".to_string());
     }
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
@@ -855,7 +855,11 @@ pub fn parse_nfe_xml(xml: &str) -> Result<ParsedNfe, String> {
     let mut chave = String::new();
     loop {
         match reader.read_event() {
+            Ok(Event::DocType(_)) => return Err("DTD não é permitido em XML fiscal.".into()),
             Ok(Event::Start(event)) => {
+                if path.len() >= 128 {
+                    return Err("XML excede a profundidade permitida.".into());
+                }
                 let tag = local_name(event.name().as_ref());
                 if tag == "infNFe" {
                     for attr in event.attributes().with_checks(false) {
@@ -963,7 +967,12 @@ pub fn parse_nfe_xml(xml: &str) -> Result<ParsedNfe, String> {
         ie: path_value(&values, &["/emit/IE"]),
         emissao: path_value(&values, &["/ide/dhEmi", "/ide/dEmi"]),
         valor: parse_decimal(Some(&path_value(&values, &["/total/ICMSTot/vNF"]))),
-        tipo: "NFe".to_string(),
+        tipo: match path_value(&values, &["/ide/mod"]).as_str() {
+            "65" => "NFCe",
+            "55" | "" => "NFe",
+            _ => return Err("Modelo de documento ainda não suportado para importação.".into()),
+        }
+        .to_string(),
         ambiente,
         total_produtos: parse_decimal(Some(&path_value(&values, &["/total/ICMSTot/vProd"]))),
         valor_frete: parse_decimal(Some(&path_value(&values, &["/total/ICMSTot/vFrete"]))),
@@ -1282,9 +1291,12 @@ pub fn summary(conn: &Connection, empresa_id: Option<i64>) -> Result<Value, Stri
         )
     }
     .map_err(|err| format!("Falha ao contar downloads: {err}"))?;
-    let manifested: i64 = if let Some(id) = empresa_id { conn.query_row(&format!("SELECT COUNT(*) FROM manifestador_notas{condition} AND manifestacao NOT IN ('N', '')"), [id], |row| row.get(0)) } else { conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE manifestacao NOT IN ('N', '')", [], |row| row.get(0)) }.map_err(|err| format!("Falha ao contar manifestações: {err}"))?;
+    let manifested: i64 = if let Some(id) = empresa_id { conn.query_row(&format!("SELECT COUNT(*) FROM manifestador_notas{condition} AND substr(chave,21,2)<>'65' AND manifestacao NOT IN ('N', '')"), [id], |row| row.get(0)) } else { conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE substr(chave,21,2)<>'65' AND manifestacao NOT IN ('N', '')", [], |row| row.get(0)) }.map_err(|err| format!("Falha ao contar manifestações: {err}"))?;
+    let eligible:i64 = if let Some(id)=empresa_id {
+        conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE empresa_id=?1 AND substr(chave,21,2)<>'65'",[id],|r|r.get(0))
+    } else {conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE substr(chave,21,2)<>'65'",[],|r|r.get(0))}.map_err(|e|e.to_string())?;
     Ok(
-        json!({"total": total, "downloaded": downloaded, "manifested": manifested, "pending": total - manifested}),
+        json!({"total": total, "downloaded": downloaded, "manifested": manifested, "pending": eligible - manifested, "manifestation_eligible":eligible}),
     )
 }
 
@@ -1483,6 +1495,20 @@ fn object_f64(object: &Map<String, Value>, keys: &[&str]) -> f64 {
         .unwrap_or_default()
 }
 
+pub fn ensure_manifestation_model(conn: &Connection, note_id: i64) -> Result<(), String> {
+    let key: String = conn
+        .query_row(
+            "SELECT chave FROM manifestador_notas WHERE id=?1",
+            [note_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if key.as_bytes().get(20..22) == Some(b"65") {
+        return Err("NFC-e não possui manifestação do destinatário de NF-e. XML, validação e DANFE NFC-e permanecem disponíveis.".into());
+    }
+    Ok(())
+}
+
 pub fn update_manifestation(
     conn: &Connection,
     note_id: i64,
@@ -1490,6 +1516,7 @@ pub fn update_manifestation(
     justification: &str,
     protocol: Option<&str>,
 ) -> Result<Value, String> {
+    ensure_manifestation_model(conn, note_id)?;
     let normalized = event.trim().to_ascii_lowercase();
     let (code, label) = match normalized.as_str() {
         "confirmacao" | "confirmacao_da_operacao" | "0" => ("0", "Confirmação da operação"),
@@ -1516,6 +1543,20 @@ pub fn update_manifestation(
     note_json(conn, note_id)
 }
 
+pub fn has_local_xml(conn: &Connection, company: i64, note: i64) -> Result<bool, String> {
+    let (content, path): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT xml_content,xml_path FROM manifestador_notas WHERE empresa_id=?1 AND id=?2",
+            params![company, note],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or("Documento não pertence à empresa ativa.")?;
+    Ok(content.is_some_and(|v| !v.trim().is_empty())
+        || path.is_some_and(|v| Path::new(&v).is_file()))
+}
+
 pub fn download_note(
     conn: &Connection,
     data_dir: &Path,
@@ -1526,7 +1567,7 @@ pub fn download_note(
     let (chave, xml_content, xml_path): (String, Option<String>, Option<String>) = conn.query_row("SELECT chave, xml_content, xml_path FROM manifestador_notas WHERE id = ?1 AND empresa_id = ?2", params![note_id, empresa_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).optional().map_err(|err| format!("Falha ao localizar NF-e para download: {err}"))?.ok_or_else(|| "NF-e não encontrada para a empresa ativa.".to_string())?;
     let xml = if let Some(xml) = xml_override.filter(|value| !value.trim().is_empty()) {
         xml.to_string()
-    } else if let Some(xml) = xml_content {
+    } else if let Some(xml) = xml_content.filter(|value| !value.trim().is_empty()) {
         xml
     } else if let Some(path) = xml_path {
         fs::read_to_string(path).map_err(|err| format!("Falha ao ler XML vinculado: {err}"))?
@@ -2237,6 +2278,22 @@ fn native_http_post(
     body: &str,
     timeout_seconds: u64,
 ) -> Result<String, String> {
+    if let Some(thumbprint) = certificate_path.strip_prefix("windows-store://") {
+        #[cfg(target_os = "windows")]
+        {
+            return crate::certificates::post_with_installed(
+                endpoint,
+                thumbprint,
+                body,
+                timeout_seconds,
+            );
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = thumbprint;
+            return Err("Este certificado está registrado no Windows. Use a consulta nesse dispositivo ou selecione um arquivo A1/PFX.".into());
+        }
+    }
     use native_tls::{Identity, TlsConnector};
 
     let url = Url::parse(endpoint).map_err(|err| format!("URL SEFAZ inválida: {err}"))?;
@@ -2611,6 +2668,11 @@ pub fn automatic_cycle(conn: &mut Connection, data_dir: &Path) -> Result<Value, 
     let mut companies = 0i64;
     for company_id in company_ids {
         ensure_operation_config(conn, company_id)?;
+        // Hardware/private-key providers can require user presence. Never trigger PIN dialogs from the scheduler.
+        let installed:bool=conn.query_row("SELECT COALESCE(certificado_path,'') LIKE 'windows-store://%' FROM manifestador_empresa_config WHERE empresa_id=?1",[company_id],|r|r.get(0)).optional().map_err(|e|e.to_string())?.unwrap_or(false);
+        if installed && provider_endpoint(conn, company_id)?.is_none() {
+            continue;
+        }
         // Claim only due companies. Persist attempts too, so failures cannot hammer SEFAZ.
         if !claim_company_cycle(conn, company_id, Utc::now().timestamp())? {
             continue;
@@ -2756,6 +2818,29 @@ mod tests {
         super::migrate(&conn).unwrap();
         super::ensure_company_configs(&conn).unwrap();
         conn
+    }
+
+    #[test]
+    fn imports_nfce_locally_and_blocks_nfe_manifestation() {
+        let mut conn = company_fixture();
+        let xml = include_str!("../../tests/fiscal/nfce-homologacao.xml");
+        super::import_xml(&mut conn, 1, xml, 0, None).unwrap();
+        let id: i64 = conn
+            .query_row("SELECT id FROM manifestador_notas", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(super::note_json(&conn, id).unwrap()["tipo"], "NFCe");
+        assert_eq!(super::summary(&conn, Some(1)).unwrap()["pending"], 0);
+        assert!(super::ensure_manifestation_model(&conn, id).is_err());
+        assert!(super::update_manifestation(&conn, id, "ciencia", "", None).is_err());
+        assert!(super::has_local_xml(&conn, 1, id).unwrap());
+        assert!(super::has_local_xml(&conn, 2, id).is_err());
+        let dir = std::env::temp_dir().join(format!("nfce-export-{}", uuid::Uuid::new_v4()));
+        let result = super::download_note(&conn, &dir, 1, id, None).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(result["path"].as_str().unwrap()).unwrap(),
+            xml
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

@@ -1,61 +1,39 @@
-# DANFE e validação XML com ACBr
+# Motor fiscal embarcado e certificados
 
-O menu **Manifestador NF-e** concentra a consulta e as operações de manifestação. Na lista de documentos, **Validar XSD** valida o XML completo com ACBrLibNFe; **DANFE PDF** valida e solicita o PDF à mesma biblioteca. O antigo relatório HTML simplificado não é mais apresentado como DANFE.
+O menu **Manifestador → NF-e e NFC-e** aceita XML completo versão 4.00 dos modelos 55 e 65. **Validar XSD** usa libxml2 estática; **DANFE PDF** valida primeiro e produz PDF A4 para NF-e ou recibo para NFC-e, com o conteúdo do XML. Não requer instalação de ACBrLib, fontes, DLL/SO ou acesso à internet para essas duas operações. O renderer Rust `danfe` e suas fontes são compilados no aplicativo, assim como os schemas e o validador. As antigas variáveis `MANIFESTADOR_ACBR_*` deixam de ser utilizadas.
 
-A integração exige ACBrLib instalada. Esta alteração **não embute binários ACBr**, e sua homologação com o motor real permanece pendente. Sem configuração, dependências ou XML completo, a operação retorna erro explícito; não produz documento de demonstração nem registra aprovação fictícia. Os testes de contrato usam uma biblioteca artificial identificada como `contract-test-only`, exclusivamente nos testes; ela não faz parte do aplicativo distribuído.
+## Escopo verificável
 
-## Instalação no servidor ou desktop
+- XML completo NF-e/NFC-e, isolado ou em `nfeProc`, é importado, armazenado por empresa, validado e convertido em PDF. O XML já armazenado pode ser baixado sem consultar um provedor. Resumos `resNFe` não contêm dados suficientes para PDF; precisam do XML completo.
+- A manifestação do destinatário permanece exclusiva de NF-e. A interface e o backend recusam manifestação de NFC-e antes de transmitir ao provedor. O download nativo DistribuiçãoDFe não é utilizado para obter NFC-e: importe seu XML completo.
+- Outros modelos e versões retornam erro explícito. Esta implementação não declara suporte a CT-e, MDF-e, NFS-e ou todos os documentos eletrônicos.
+- DTD/entidades externas, entradas maiores que 8 MiB, profundidade excessiva, schemas adulterados e documentos que violem o XSD são recusados. O parser XML não acessa rede. Os includes são arquivos locais do pacote incorporado.
+- A validação XSD verifica estrutura conforme o pacote incluído; não verifica assinatura criptográfica, autorização, regras fiscais ou situação atual na SEFAZ. O nome/data do pacote não comprova vigência de todas as notas técnicas.
+- PDF e XML permanecem vinculados à empresa, com verificação de acesso na API e no desktop. PDFs são salvos em `exports/empresa-<id>` e também devolvidos para download pela interface; o comportamento do download no WebView varia por plataforma.
+- Consulta e transmissão a serviços fiscais continuam dependendo de internet, certificado e disponibilidade dos serviços. Esta mudança não acrescenta assinatura nativa de eventos nem emissão fiscal.
 
-A documentação oficial da ACBrLib informa suporte a Windows/Linux em x86/x64. O adaptador usa exclusivamente a ABI **MT (MultiThread), cdecl**, da mesma arquitetura do processo. Não usar variante ST ou stdcall: os nomes exportados não permitem distinguir essas ABIs com segurança. Uma biblioteca incompatível pode encerrar o processo. Instalação e atualização são tarefas do operador da máquina, não de usuários da API.
+## Seleção de certificados
 
-Defina no ambiente do processo:
+No cadastro fiscal da empresa, **Selecionar arquivo** abre o seletor nativo do navegador/WebView para PFX/P12. O arquivo é copiado para armazenamento privado da aplicação, em diretório da empresa e nome aleatório; em Unix, diretório 0700 e arquivo 0600. Em conexão REST, o arquivo vai para o servidor configurado. Informe a senha e salve a empresa para aplicar a referência. A seleção não valida senha, cadeia ou validade; essa verificação ocorre no uso do transporte existente. Os registros já salvos continuam válidos.
 
-```dotenv
-MANIFESTADOR_ACBR_NFE_MT_CDECL_LIBRARY=/opt/manifestador/acbr/libacbrnfe64.so
-# Opcional: substituir o pacote de schemas fornecido
-MANIFESTADOR_ACBR_SCHEMAS=/opt/manifestador/acbr/Schemas/NFe
-```
+No aplicativo Windows, **Certificados instalados** lista metadados públicos do repositório `CurrentUser/My` com referência de chave privada. A referência selecionada usa `windows-store://<thumbprint>`. O transporte HTTPS WinHTTP usa o certificado sem exportar a chave; valida o servidor e bloqueia redirecionamentos. A enumeração não é exposta pela API REST. A1/A3 dependem de o provedor CSP/CNG estar instalado e disponível para o usuário que executa o aplicativo. PIN permanece sob controle do provedor Windows; não é salvo pela aplicação. Consultas automáticas nativas ignoram referências de certificados instalados, evitando prompts de PIN em segundo plano; use consulta manual.
 
-Os valores são exemplos; use caminhos absolutos reais. No Windows, aponte para a DLL MT/cdecl e para o diretório de schemas. Instale as dependências exigidas pela compilação escolhida, inclusive a biblioteca de manipulação XML utilizada pelo ACBr. `SSLXmlSignLib=4` seleciona LibXml2. Sem `MANIFESTADOR_ACBR_SCHEMAS`, o aplicativo usa os seis XSD NF-e 4.00 extraídos, sem alterações, do pacote de referência já fornecido no repositório. A origem e os SHA-256 estão em `src-tauri/resources/fiscal/schemas/nfe/manifest.json`. Os arquivos e dependências são materializados em diretório identificado pelo hash do conteúdo; alterações inesperadas no cache são recusadas. O nome/data do pacote não é garantia de vigência fiscal.
+A3 exige o dispositivo físico e, conforme o fabricante, seu driver/middleware: o aplicativo não consegue incorporá-los universalmente. Não há homologação com token físico nesta alteração. Seleção de repositório macOS/Linux, PKCS#11, certificado remoto em nuvem e TLS com certificado no Android/iOS não foram implementados. O seletor PFX/P12 não implica transporte fiscal nativo em plataformas que ainda não o suportam. PEM avulso não é tratado como PFX.
 
-Quando definido, o diretório próprio deve conter o pacote completo e atualizado de schemas NF-e 4.00, incluindo seus includes/imports; a presença de `nfe_v4.00.xsd` é apenas uma verificação preliminar. O operador deve registrar a revisão do pacote compatível com a vigência dos documentos e notas técnicas aplicáveis. O aplicativo não baixa nem atualiza schemas silenciosamente.
+## Compilação, origem e licenças
 
-Não há distribuição ACBr nativa validada neste projeto para macOS, Linux ARM64, Android ou iOS. Nesses casos, os comandos fiscais podem ser atendidos por uma instalação Windows/Linux compatível através da conexão REST já existente. Isso não transforma o aplicativo local em um motor ACBr embarcado.
+O usuário final não instala o motor. A máquina de build precisa de CMake e compilador C, além do toolchain Rust e SDK da plataforma. `src-tauri/fiscal-xml` compila o fonte libxml2 2.15.4 incluído em `vendor`, verifica seu SHA-256 e faz vinculação estática com símbolos internos ocultos em Unix. O pacote não baixa bibliotecas no runtime. O renderer `danfe` 0.1.0 está fixado no Cargo.lock e usa Typst e fontes Liberation incorporadas. A compilação é mais pesada; o CI limita concorrência a dois jobs Cargo.
 
-## Comportamento e limites
+- libxml2: [GNOME/libxml2](https://github.com/GNOME/libxml2), commit `96498992efa48d52b0e8b83058bd88dbdaf153c1`, licença MIT e avisos adicionais preservados no arquivo fonte. SHA-256 do tar: `14f2d86b5d34f23e8651d07d070ab3c651e8100e2dc8a103b50f18fd2f408499`.
+- Renderer: [rust_danfe](https://github.com/juniortada/rust_danfe), MIT/Apache-2.0; distribuição usando os termos MIT. Liberation: SIL Open Font License.
+- Schemas NF-e 4.00: seis arquivos originais, sem modificações, com proveniência e hashes em `src-tauri/resources/fiscal/schemas/nfe/manifest.json`. Atualizações exigem revisão explícita do pacote e dos testes.
+- Avisos são distribuídos em `third-party-fiscal-notices.txt` no frontend incorporado e em `src-tauri/resources/licenses` no código-fonte.
+- [WinHTTP e certificados de cliente](https://learn.microsoft.com/en-us/windows/win32/winhttp/ssl-in-winhttp).
 
-- Aceita uma NF-e completa modelo 55, versão 4.00; resumo `resNFe`, eventos e outros modelos são recusados neste recurso.
-- Rejeita DTD, entidades externas e entrada acima de 8 MiB antes da chamada à biblioteca.
-- Valida vínculo/permissão do usuário e pertencimento da nota à empresa, no desktop e na API. Uma operação não altera certificado, NSU, XML original ou situação da manifestação.
-- Inicializa uma instância MT por operação; usa diretório temporário exclusivo, finaliza a instância e remove os temporários mesmo em caso de erro. As chamadas são serializadas para evitar concorrência nos componentes de impressão.
-- Executa `NFE_CarregarXML`, `NFE_Validar` e, para PDF, `NFE_ImprimirPDF`. Erros da biblioteca são devolvidos ao usuário.
-- O resultado XSD corresponde aos schemas instalados. Não comprova assinatura criptográfica, regras de negócio, autorização nem situação atual na SEFAZ.
-- O PDF é salvo em `exports/empresa-<id>` no diretório de dados do servidor/desktop, com nome exclusivo. A interface também solicita seu download ao navegador. No WebView, o tratamento de download depende da plataforma; o caminho salvo é informado.
-- Consulta, distribuição, manifestação pelo provedor, XML e ZIP existentes permanecem disponíveis. Esta integração não acrescenta assinatura/transmissão nativa de eventos de manifestação, nem declara essas operações homologadas.
+## Testes e limites da homologação
 
-## Validação antes do uso
+`cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --lib` executa validação XSD e geração PDF reais para fixtures públicas de homologação dos dois modelos, rejeição de XML inválido/DTD, isolamento entre empresas, importação/download de NFC-e e bloqueio de manifestação inadequada. Não há biblioteca fiscal simulada nesses testes. A origem dos XML está em `tests/fiscal/README.md`.
 
-Além do CI, execute com ACBrLib real e XML de homologação autorizado:
+As páginas de PDF geradas foram renderizadas e inspecionadas localmente: NF-e A4 com chave/código de barras, itens e totais; NFC-e com QR, chave, pagamento e total. Isso não substitui homologação fiscal de todos os layouts e cenários. O CI Windows compila o transporte e enumera metadados; não testa um token, senha, PIN ou transação real com a SEFAZ. Builds Android/iOS verificam compilação, não funcionamento de hardware fiscal.
 
-```bash
-MANIFESTADOR_ACBR_SMOKE_XML=/caminho/nota-homologacao.xml \
-  cargo test --manifest-path src-tauri/Cargo.toml --no-default-features \
-  --lib --locked acbr_real_engine_smoke -- --ignored
-```
-
-Examine o PDF produzido em uma execução pela interface; confira emitente, destinatário, chave, protocolo, itens, tributos, totais, código de barras e paginação. Teste rejeição de um XML que viole os schemas e confirme que nenhum PDF é entregue. O teste de contrato do CI verifica ABI, sequência, propagação de erro e limpeza; não substitui essa homologação fiscal.
-
-## Origem e licença
-
-A implementação usa a interface pública documentada; não copia fontes ACBr nem redistribui DLL/SO nesta PR. Os XSD de referência fornecidos são incorporados sem modificação, preservando seus comentários e avisos de origem. O portal descreve os fontes sob LGPL, e a página de licença da ACBrLib apresenta LGPL 2.1. Antes de distribuir uma compilação ou pacote de schemas, confira os avisos e a versão de licença do artefato específico, preserve atribuições e licença e disponibilize o código-fonte correspondente conforme os termos aplicáveis. A substituição da biblioteca pelo operador permanece possível; não há vinculação estática neste adaptador.
-
-Referências oficiais consultadas:
-
-- [Fontes e SVN do projeto ACBr](https://projetoacbr.com.br/fontes/)
-- [ACBrLib e requisitos](https://acbr.sourceforge.io/ACBrLib/BemVindo.html)
-- [MT e handles por instância](https://acbr.sourceforge.io/ACBrLib/ACBrLibeMultiThread.html)
-- [Convenções de chamada](https://acbr.sourceforge.io/ACBrLib/CdeclouStdCallqualusar.html)
-- [Configuração NF-e e DANFE](https://acbr.sourceforge.io/ACBrLib/ConfiguracoesdaBiblioteca16.html)
-- [Validação](https://acbr.sourceforge.io/ACBrLib/NFE_Validar.html)
-- [PDF](https://acbr.sourceforge.io/ACBrLib/NFE_ImprimirPDF.html)
-- [Licença](https://acbr.sourceforge.io/ACBrLib/LicencadeUso.html)
+SMTP global e por empresa permanecem preservados. A precedência/fallback segue pendente de definição e não foi alterada.

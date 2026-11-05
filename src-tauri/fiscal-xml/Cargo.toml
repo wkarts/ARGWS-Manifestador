@@ -1,0 +1,12 @@
+[package]
+name = "manifestador-fiscal-xml"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+links = "manifestador_xml2"
+
+[build-dependencies]
+cmake = "0.1"
+flate2 = "1"
+tar = "0.4"
+sha2 = "0.10"

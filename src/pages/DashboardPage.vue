@@ -43,12 +43,12 @@ watch([empresaId, () => session.sessionToken, canView], load, { immediate: true 
     <div v-if="error" class="alert error" role="alert">{{ error }}</div>
     <template v-if="stats">
       <section class="dashboard-metrics-grid fiscal-metrics">
-        <DashboardMetricCard title="NF-e registradas" :value="Number(stats.total)" subtitle="Documentos desta empresa" icon="file" status="info" />
-        <DashboardMetricCard title="Sem manifestação registrada" :value="Number(stats.pending)" subtitle="Ainda sem registro de evento" icon="clipboard" status="warning" />
+        <DashboardMetricCard title="Documentos registrados" :value="Number(stats.total)" subtitle="Documentos desta empresa" icon="file" status="info" />
+        <DashboardMetricCard title="Sem manifestação registrada" :value="Number(stats.pending)" subtitle="NF-e; não se aplica a NFC-e" icon="clipboard" status="warning" />
         <DashboardMetricCard title="Com registro de manifestação" :value="Number(stats.manifested)" subtitle="Confira o protocolo no histórico" icon="file" status="neutral" />
         <DashboardMetricCard title="XML baixado" :value="Number(stats.downloaded)" subtitle="Downloads registrados" icon="file" status="info" />
       </section>
-      <p v-if="Number(stats.total) === 0" class="card" role="status">Nenhuma NF-e registrada para esta empresa. Importe um XML ou configure a consulta para obter documentos.</p>
+      <p v-if="Number(stats.total) === 0" class="card" role="status">Nenhum documento registrado para esta empresa. Importe um XML ou configure a consulta para obter documentos.</p>
       <p class="muted-text">Indicadores da base de documentos, sem consulta automática à SEFAZ nesta tela. Um registro local de manifestação não comprova autorização; consulte o retorno e o protocolo no histórico da nota.</p>
     </template>
     <section class="card grid page-gap">

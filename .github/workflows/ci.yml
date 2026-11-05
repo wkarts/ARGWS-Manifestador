@@ -18,6 +18,7 @@ concurrency:
 
 env:
   CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "2"
   CARGO_TERM_COLOR: always
   NODE_VERSION: "24"
 
@@ -422,3 +423,24 @@ jobs:
         run: >-
           cargo run --manifest-path tests/legacy-migration-harness/Cargo.toml
           --locked
+
+  windows-fiscal:
+    name: Windows embedded fiscal and certificate store
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+      - name: Test embedded PDF, XSD and public certificate enumeration
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --lib
+      - name: Prepare desktop assets
+        shell: bash
+        run: |
+          mkdir -p dist
+          printf '%s\n' '<!doctype html><html><body>CI Windows</body></html>' > dist/index.html
+          node scripts/prepare-tauri-resources.mjs
+      - name: Check desktop certificate commands and Windows TLS
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked --features desktop --lib
