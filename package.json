@@ -1,7 +1,7 @@
 {
   "name": "manifestador-nfe-tauri-desktop",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "engines": {
     "node": "^22.14.0 || >=24.10.0"

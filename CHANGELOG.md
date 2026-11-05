@@ -1,3 +1,16 @@
+## [1.0.1](https://github.com/wkarts/ARGWS-Manifestador/compare/v1.0.0...v1.0.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* align fiscal workspace and isolate company parameters ([9aea791](https://github.com/wkarts/ARGWS-Manifestador/commit/9aea7913f713a5c5f33636d540fca4a10326ef6f))
+* **release:** avoid removed Android SDK tools package ([39ed368](https://github.com/wkarts/ARGWS-Manifestador/commit/39ed3684d433f5d6033553e9a4c8b3135fdce862))
+* **release:** generate immutable numeric prereleases from develop ([e6cd83f](https://github.com/wkarts/ARGWS-Manifestador/commit/e6cd83fcb381a7c9b80b2709bd348a656776bf03))
+* **release:** preserve conventional notes and tagged changelog ([5b88122](https://github.com/wkarts/ARGWS-Manifestador/commit/5b881224901daa93b28fee9dd6c3368d3db4d8ca))
+
+Canal: main
+Commit de origem aprovado no CI: 4b9e65fd1b215972398a4e51fd86106dd03532bb
+
 # 1.0.0 (2026-11-05)
 
 
