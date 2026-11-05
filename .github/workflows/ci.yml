@@ -434,6 +434,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
+          cache-on-failure: true
       - name: Test embedded PDF, XSD and public certificate enumeration
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --lib
       - name: Prepare desktop assets

@@ -54,7 +54,13 @@ fn main() {
     }
     let dst = build.build();
     println!("cargo:rustc-link-search=native={}/lib", dst.display());
-    println!("cargo:rustc-link-lib=static=xml2");
+    // Upstream CMake adds both the lib prefix and s postfix for MSVC Release static builds.
+    let library = if target.contains("msvc") {
+        "libxml2s"
+    } else {
+        "xml2"
+    };
+    println!("cargo:rustc-link-lib=static={library}");
     if target.contains("windows") {
         println!("cargo:rustc-link-lib=bcrypt");
     } else {

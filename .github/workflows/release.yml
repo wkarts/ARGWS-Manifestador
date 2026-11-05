@@ -30,6 +30,7 @@ concurrency:
 
 env:
   CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "2"
   CARGO_TERM_COLOR: always
   NODE_VERSION: "24"
 
