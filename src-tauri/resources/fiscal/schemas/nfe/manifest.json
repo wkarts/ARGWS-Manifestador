@@ -1,0 +1,13 @@
+{
+  "source": "Pacote de referência fornecido no repositório, Schemas/Schemas_04112026.zip",
+  "archive_sha256": "e2df7f5847f19b20d6b342e9568f3a7e2ae6af98e80a70f3f335c635f0056f03",
+  "scope": "NF-e 4.00, dependências transitivas de nfe_v4.00.xsd e procNFe_v4.00.xsd",
+  "files": {
+    "nfe_v4.00.xsd": "adce3646c13ceb54922ec3142fc1dc45bd4fb839ac35ad583e86c733c07d27df",
+    "leiauteNFe_v4.00.xsd": "2b16c9218ce658f9f6eac2711bd87c2fc90af62ae31c34fbf69c3a29cddefcfd",
+    "xmldsig-core-schema_v1.01.xsd": "f56744a5f51c03f027de13f39f869307091781a9ef1d91b1ebe14719ce28e1ac",
+    "tiposBasico_v4.00.xsd": "62ab340c27c2edfc2a90b32333a1ee1470bf7e44e88c1e16c64f1679c1f6b00a",
+    "DFeTiposBasicos_v1.00.xsd": "9515262fac14d7de6b3a62b3d73913c1e186f040f8e80923e027aaf1dd71ba13",
+    "procNFe_v4.00.xsd": "b7af3072ff7398aa557c42bc6d8198dd3c006b1a6ecaad66bc839a5c34cbcb84"
+  }
+}

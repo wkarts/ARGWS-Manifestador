@@ -10,7 +10,8 @@ import {
   fetchManifestadorNotes,
   getManifestadorCompanyConfig,
   getManifestadorConfig,
-  getManifestadorNote,
+  processFiscalNote,
+  getFiscalEngineStatus,
   getManifestadorSummary,
   importManifestadorXml,
   listManifestadorNoteLogs,
@@ -20,7 +21,7 @@ import {
   type GenericRecord,
 } from "../services/crud";
 import { showSplashInfo, showSplashSuccess, showSplashWarning } from "../services/splash";
-import { openReportPreview } from "../print/reportWindow";
+
 
 const session = useSessionStore();
 const router = useRouter();
@@ -113,14 +114,7 @@ function defaultAccountingPeriod() {
   accountingForm.destinatario = "";
 }
 
-function escapeHtml(value: unknown) {
-  return text(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+
 
 function statusLabel(row: GenericRecord) {
   const manifestation = text(row.manifestacao, "N");
@@ -231,21 +225,31 @@ async function download(row: GenericRecord) {
   await load();
 }
 
-async function preview(row: GenericRecord) {
-  if (!session.sessionToken || !currentCompanyId.value) return;
+async function fiscal(row: GenericRecord, operation: "validate" | "danfe") {
+  if (!session.sessionToken || !currentCompanyId.value || saving.value) return;
+  const company = currentCompanyId.value;
   saving.value = true;
   try {
-    const note = await getManifestadorNote(session.sessionToken, currentCompanyId.value, number(row.id));
-    const items = (Array.isArray(note.items) ? note.items : []) as GenericRecord[];
-    const itemRows = items.map((item) => `<tr><td>${escapeHtml(item.item)}</td><td>${escapeHtml(item.cprod)}</td><td>${escapeHtml(item.xprod)}</td><td>${escapeHtml(item.ucom)}</td><td>${number(item.qcom).toLocaleString("pt-BR")}</td><td>${money(item.vuntrib)}</td><td>${money(number(item.qcom) * number(item.vuntrib))}</td></tr>`).join("");
-    const html = `<article class="danfe"><div class="danfe-head"><div><strong>Manifestador NF-e</strong><h1>DANFE — Documento Auxiliar da NF-e</h1></div><div><strong>NF-e ${escapeHtml(note.numero || "-")}</strong><br>Série ${escapeHtml(note.serie || "-")}<br>Chave ${escapeHtml(note.chave || "-")}</div></div><div class="danfe-grid"><div><b>Emitente</b><br>${escapeHtml(note.nome || "-")}<br>CNPJ/CPF: ${escapeHtml(note.cnpj || "-")}<br>IE: ${escapeHtml(note.ie || "-")}</div><div><b>Emissão</b><br>${escapeHtml(dateTime(note.emissao))}<br><b>Protocolo</b><br>${escapeHtml(note.protocolo || "-")}</div></div><table><thead><tr><th>Item</th><th>Código</th><th>Descrição</th><th>UN</th><th>Qtd.</th><th>Vlr. unit.</th><th>Total</th></tr></thead><tbody>${itemRows || `<tr><td colspan="7">Nenhum item detalhado disponível no XML.</td></tr>`}</tbody></table><div class="danfe-total"><strong>Valor dos produtos: ${money(note.total_produtos)}</strong><strong>Valor da NF-e: ${money(note.valor)}</strong></div></article><style>.danfe{font-family:Arial,sans-serif;color:#172033}.danfe-head,.danfe-grid,.danfe-total{display:flex;justify-content:space-between;gap:24px;border:1px solid #172033;padding:14px;margin-bottom:10px}.danfe-grid>div{flex:1}.danfe h1{font-size:18px;margin:8px 0}.danfe table{width:100%;border-collapse:collapse;font-size:12px}.danfe th,.danfe td{border:1px solid #64748b;padding:6px;text-align:left}.danfe-total{justify-content:flex-end}</style>`;
-    await openReportPreview(html, `DANFE ${text(note.chave, "NF-e")}`);
-  } catch (err) {
-    showSplashWarning(err instanceof Error ? err.message : "Não foi possível abrir o DANFE.");
-  } finally {
-    saving.value = false;
-  }
+    const result = await processFiscalNote(session.sessionToken, company, number(row.id), operation);
+    if (company !== currentCompanyId.value) return;
+    if (operation === "validate") { showSplashSuccess(String(result.message)); return; }
+    const bytes = Uint8Array.from(atob(String(result.content_base64)), c => c.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    const link = document.createElement("a");
+    link.href = url; link.download = String(result.file_name);
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    showSplashSuccess(`DANFE PDF gerado pela ACBrLib e salvo no servidor: ${String(result.path)}. A situação atual na SEFAZ não foi consultada.`);
+  } catch (err) { showSplashWarning(err instanceof Error ? err.message : String(err)); }
+  finally { saving.value = false; }
 }
+
+const fiscalStatus = ref<GenericRecord>({ message: "Verificando disponibilidade do motor fiscal…" });
+onMounted(async () => {
+  if (!session.sessionToken) return;
+  try { fiscalStatus.value = await getFiscalEngineStatus(session.sessionToken); }
+  catch (err) { fiscalStatus.value = { message: String(err) }; }
+});
 
 function openManifest(row: GenericRecord) {
   selectedNote.value = row;
@@ -328,6 +332,7 @@ onMounted(load);
 
 <template>
   <BasePage title="Manifestação de NF-e" subtitle="Distribuição, consulta, manifestação, download e organização de NF-e destinadas." icon="file">
+    <p class="form-hint" role="status">{{ fiscalStatus.message }}</p>
     <template #actions>
       <button v-if="session.can('empresas:view')" class="secondary" type="button" :disabled="!currentCompanyId" @click="openConfig">Cadastro e parâmetros da empresa</button>
       <button class="secondary" type="button" :disabled="loading" @click="refresh">Atualizar</button>
@@ -375,7 +380,7 @@ onMounted(load);
               <td><span class="status-pill">{{ statusLabel(row) }}</span></td>
               <td>{{ Number(row.download) === 1 ? "Sim" : "Não" }}</td>
               <td>{{ row.nsu || "0" }}</td>
-              <td><div class="compact-actions actions"><button class="secondary" type="button" :disabled="!canManage" @click="preview(row)">DANFE</button><button class="secondary" type="button" :disabled="!canManage" @click="download(row)">XML</button><button class="secondary" type="button" :disabled="!canManage" @click="openManifest(row)">Manifestar</button><button class="secondary" type="button" @click="openLogs(row)">Histórico</button></div></td>
+              <td><div class="compact-actions actions"><button class="secondary" type="button" :disabled="saving" @click="fiscal(row, 'danfe')">DANFE PDF</button><button class="secondary" type="button" :disabled="saving" @click="fiscal(row, 'validate')">Validar XSD</button><button class="secondary" type="button" :disabled="!canManage" @click="download(row)">XML</button><button class="secondary" type="button" :disabled="!canManage" @click="openManifest(row)">Manifestar</button><button class="secondary" type="button" @click="openLogs(row)">Histórico</button></div></td>
             </tr>
             <tr v-if="!rows.length"><td colspan="8" class="empty-cell">{{ loading ? "Carregando notas..." : "Nenhuma NF-e encontrada para a empresa ativa." }}</td></tr>
           </tbody>

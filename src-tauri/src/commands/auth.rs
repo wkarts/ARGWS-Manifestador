@@ -753,6 +753,9 @@ fn required_permission(command: &str) -> Option<&'static str> {
         | "tray_exit_app"
         | "system_set_data_dir" => Some("config:manage"),
         "open_print_preview" => Some("relatorios:export"),
+        "application_smtp_get" => Some("config:view"),
+        "application_smtp_save" => Some("config:manage"),
+        "manifestador_fiscal_status" | "manifestador_fiscal_process" => Some("manifestador:view"),
         "manifestador_summary"
         | "manifestador_config_get"
         | "manifestador_company_config_get"

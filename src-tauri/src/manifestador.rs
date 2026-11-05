@@ -322,6 +322,7 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     migrate_legacy_config(conn)?;
     migrate_legacy_notes(conn)?;
     migrate_company_operation_config(conn)?;
+    crate::smtp_settings::migrate(conn)?;
     Ok(())
 }
 

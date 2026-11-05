@@ -9,6 +9,7 @@ import PerfilPage from "../pages/PerfilPage.vue";
 import LoginPage from "../pages/LoginPage.vue";
 import FirstAccessPage from "../pages/FirstAccessPage.vue";
 import MobileStartPage from "../pages/MobileStartPage.vue";
+import SmtpSettingsPage from "../pages/SmtpSettingsPage.vue";
 import SystemPage from "../pages/SystemPage.vue";
 import LicensingPage from "../pages/LicensingPage.vue";
 import AboutPage from "../pages/AboutPage.vue";
@@ -64,6 +65,7 @@ const routes: RouteRecordRaw[] = [
       { path: "perfis", component: PerfilPage, meta: { permission: "perfis:view" } },
       ...genericEntityRoutes,
       { path: "sistema", component: SystemPage, meta: { permission: "config:view", feature: "systemSettings", desktopOnly: true } },
+      { path: "sistema/smtp", component: SmtpSettingsPage, meta: { permission: "config:view" } },
       { path: "sistema/banco", component: DatabasePage, meta: { permission: "config:view", feature: "databaseSettings" } },
       { path: "licenciamento", component: LicensingPage, meta: { permission: "config:view", feature: "licensing" } },
       { path: "sobre", component: AboutPage, meta: { feature: "about" } },

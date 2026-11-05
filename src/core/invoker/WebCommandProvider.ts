@@ -493,6 +493,13 @@ export class WebCommandProvider implements CommandProvider {
       case "tray_status":
         return { enabled: false, available: false, runtime: getPlatformInfo().mode, message: "Tray icon é recurso desktop/Tauri." } as T;
 
+      case "manifestador_fiscal_status":
+        return { supported: false, configured: false, message: "Conecte a aplicação a um servidor com ACBrLib para gerar DANFE PDF e validar XSD." } as T;
+      case "manifestador_fiscal_process":
+      case "application_smtp_get":
+      case "application_smtp_save":
+        throw new Error("Este recurso exige conexão com o servidor ou o aplicativo nativo.");
+
       case "open_print_preview":
         window.print();
         return true as T;

@@ -1,0 +1,2 @@
+# Preserve supplied third-party XSD bytes, including original whitespace and SHA-256.
+*.xsd -text -whitespace

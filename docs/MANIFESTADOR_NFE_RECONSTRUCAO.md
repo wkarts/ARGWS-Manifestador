@@ -10,7 +10,7 @@ O Manifestador NF-e organiza documentos fiscais destinados, manifestações e XM
 - Consulta de notas destinadas e armazenamento de resumos `resNFe` recebidos pela DistribuiçãoDFe.
 - Consulta automática configurável por empresa, com NSU persistido.
 - Download e cópia local do XML, exportação ZIP e envio do ZIP à contabilidade por SMTP TLS.
-- DANFE de consulta, histórico de operações, filtros, manifestação local e integração de manifestação por provedor.
+- DANFE PDF e validação XSD pela integração ACBrLib, dependentes de instalação e homologação do motor (ver [ACBR_FISCAL.md](ACBR_FISCAL.md)); histórico de operações, filtros, manifestação local e integração de manifestação por provedor.
 - Integração JSON externa para ACBr/SEFAZ quando a instalação já possuir esse serviço.
 - Integração nativa desktop com certificado A1/PFX para DistribuiçãoDFe e download do XML processado.
 - API interna e comandos Tauri com autenticação, autorização e isolamento por empresa.

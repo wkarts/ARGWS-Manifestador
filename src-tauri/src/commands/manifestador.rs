@@ -422,3 +422,47 @@ pub fn manifestador_provider_test(
         json!({"configured": true, "endpoint": endpoint, "timeout_seconds": timeout, "message": "Endpoint configurado. O teste efetivo ocorre ao solicitar notas ou enviar manifestação."}),
     )
 }
+
+#[tauri::command]
+pub fn application_smtp_get(
+    state: State<'_, SharedState>,
+    session_token: String,
+) -> Result<Value, String> {
+    let (conn, _) = session_and_connection(&state, &session_token, "config:view")?;
+    crate::smtp_settings::get(&conn)
+}
+
+#[tauri::command]
+pub fn application_smtp_save(
+    state: State<'_, SharedState>,
+    session_token: String,
+    payload: Map<String, Value>,
+) -> Result<Value, String> {
+    let (conn, _) = session_and_connection(&state, &session_token, "config:manage")?;
+    crate::smtp_settings::save(&conn, &payload)
+}
+
+#[tauri::command]
+pub fn manifestador_fiscal_status(
+    state: State<'_, SharedState>,
+    session_token: String,
+) -> Result<Value, String> {
+    session_and_connection(&state, &session_token, "manifestador:view")?;
+    Ok(crate::fiscal_engine::status())
+}
+
+#[tauri::command]
+pub fn manifestador_fiscal_process(
+    state: State<'_, SharedState>,
+    session_token: String,
+    empresa_id: i64,
+    nota_id: i64,
+    operation: String,
+) -> Result<Value, String> {
+    if empresa_id <= 0 {
+        return Err("Selecione uma empresa.".into());
+    }
+    let (conn, identity) = session_and_connection(&state, &session_token, "manifestador:view")?;
+    let company = required_company(&conn, &identity, Some(empresa_id))?;
+    crate::fiscal_engine::process(&conn, &state.data_dir()?, company, nota_id, &operation)
+}

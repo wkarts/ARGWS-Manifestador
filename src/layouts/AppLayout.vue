@@ -189,6 +189,7 @@ function updateViewportMode() {
 const savedMenuState = readMenuState();
 const groupState = reactive<Record<MenuSection, boolean>>({
   dashboard: savedMenuState?.dashboard ?? true,
+  manifestador: savedMenuState?.manifestador ?? true,
   cadastro: savedMenuState?.cadastro ?? true,
   sistema: savedMenuState?.sistema ?? true,
   ferramentas: savedMenuState?.ferramentas ?? false,
@@ -197,6 +198,7 @@ const groupState = reactive<Record<MenuSection, boolean>>({
 
 const sections: { key: MenuSection; title: string; subtitle: string }[] = [
   { key: "dashboard", title: "Visão fiscal", subtitle: "visão geral" },
+  { key: "manifestador", title: "Manifestador NF-e", subtitle: "documentos e manifestação" },
   { key: "cadastro", title: "Cadastro", subtitle: "dados base" },
   { key: "sistema", title: "Sistema", subtitle: "segurança e parâmetros" },
   { key: "ferramentas", title: "Ferramentas", subtitle: "runtime e integrações" },

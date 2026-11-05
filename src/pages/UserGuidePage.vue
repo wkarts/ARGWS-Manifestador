@@ -23,6 +23,9 @@ import BaseSectionCard from "../components/base/BaseSectionCard.vue";
       <BaseSectionCard title="Acesso e segurança">
         <p>Troque a senha inicial e vincule usuários às empresas e perfis necessários. Permissões de consulta e operação fiscal são distintas. Senhas de SMTP e certificado não são devolvidas nos formulários; deixe em branco para manter as existentes.</p>
       </BaseSectionCard>
+      <BaseSectionCard title="DANFE PDF e validação XSD">
+        <p>No menu Manifestador NF-e, baixe o XML completo e use DANFE PDF ou Validar XSD. Esses recursos exigem ACBrLib e schemas instalados no servidor Windows/Linux compatível. A tela informa quando não estão configurados. A validação XSD não verifica a assinatura nem confirma a situação atual na SEFAZ.</p>
+      </BaseSectionCard>
       <BaseSectionCard title="Diagnóstico">
         <p>Use o histórico da nota para retornos fiscais e Logs para falhas da aplicação. As áreas de integrações e serviços são administrativas; sua disponibilidade no menu não indica que estejam conectadas.</p>
       </BaseSectionCard>
