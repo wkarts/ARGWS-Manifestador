@@ -45,6 +45,8 @@ test('release preparation uses local immutable tags, repeats safely and refuses 
     assert.match(fs.readFileSync(output, 'utf8'), /prerelease=true/);
     const reserved = command(checkout, 'rev-parse', 'v1.0.1');
     assert.equal(command(checkout, 'rev-parse', 'v1.0.1^'), source);
+    assert.match(command(checkout, 'show', 'v1.0.1:CHANGELOG.md'), /1\.0\.1/);
+    assert.match(command(checkout, 'show', 'v1.0.1:CHANGELOG.md'), new RegExp(source));
     command(checkout, 'checkout', '--detach', source);
     const retry = run({ FAKE_RELEASES: '[[{"tag_name":"v1.0.1","draft":true,"prerelease":true}]]' });
     assert.equal(retry.status, 0, retry.stderr);
