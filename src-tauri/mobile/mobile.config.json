@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "productName": "Manifestador NF-e",
+  "version": "1.2.1",
+  "identifier": "br.com.wwsoftwares.manifestador-nfe",
+  "frontend": {
+    "strategy": "local-bundled",
+    "remoteWebView": false,
+    "dashboardsAndCharts": "local",
+    "restClientReady": true,
+    "standaloneReady": true,
+    "localDatabase": "sqlite"
+  },
+  "android": {
+    "package": "br.com.wwsoftwares.manifestador-nfe",
+    "generatedProject": "src-tauri/gen/android",
+    "primaryRustTarget": "aarch64-linux-android",
+    "rustTargets": [
+      "aarch64-linux-android",
+      "armv7-linux-androideabi",
+      "x86_64-linux-android",
+      "i686-linux-android"
+    ],
+    "artifacts": [
+      "apk",
+      "aab"
+    ]
+  },
+  "ios": {
+    "bundleIdentifier": "br.com.wwsoftwares.manifestador-nfe",
+    "generatedProject": "src-tauri/gen/apple",
+    "primaryRustTarget": "aarch64-apple-ios",
+    "unsignedIpa": true
+  },
+  "iconSource": "src-tauri/icons/icon.png",
+  "assets": {
+    "androidIconSource": "src-tauri/mobile/icons/android-app-icon-1024.png",
+    "iosIconSource": "src-tauri/mobile/icons/ios-app-icon-1024.png"
+  },
+  "authentication": {
+    "desktopBootstrap": "internal",
+    "passwordPolicy": "backend-configurable",
+    "localLoginRequiredByDefault": false,
+    "remoteLoginRequired": true
+  },
+  "operationModes": {
+    "local": {
+      "database": "sqlite",
+      "authentication": "optional",
+      "networkServices": "disabled"
+    },
+    "remote": {
+      "transport": "rest-api",
+      "authentication": "user-session",
+      "authorization": [
+        "profile",
+        "permissions",
+        "companies"
+      ]
+    }
+  }
+}

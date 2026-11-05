@@ -1,0 +1,141 @@
+name: Mobile iOS unsigned
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "src-tauri/**"
+      - "scripts/ci/run-tauri.mjs"
+      - "scripts/mobile/**"
+      - "scripts/release/package-ios-unsigned.sh"
+      - "scripts/release/write-build-status.mjs"
+      - ".github/workflows/mobile-ios.yml"
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "src-tauri/**"
+      - "scripts/ci/run-tauri.mjs"
+      - "scripts/mobile/**"
+      - "scripts/release/package-ios-unsigned.sh"
+      - "scripts/release/write-build-status.mjs"
+      - ".github/workflows/mobile-ios.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: "24"
+
+jobs:
+  ios:
+    name: iOS ARM64 IPA não assinado
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Rust for physical iOS device
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: ci-mobile-ios-aarch64
+          cache-on-failure: true
+
+      - name: Validate Xcode and CocoaPods
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          if ! command -v pod >/dev/null 2>&1; then
+            brew install cocoapods
+          fi
+          pod --version
+
+      - name: Install frontend dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Validate version and Cargo lockfile
+        run: |
+          npm run ci:version
+          cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
+
+      - name: Build local Vue frontend and Tauri resources
+        run: npm run build:web:tauri
+
+      - name: Build unsigned iOS application bundle
+        run: bash ./scripts/mobile/build-ios-unsigned.sh release/ios-app
+
+      - name: Package real unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="$(cat release/ios-app/app-path.txt)"
+          package_name="$(node -p "require('./package.json').name")"
+          version="$(tr -d '\r\n' < VERSION)"
+          mkdir -p release/ios
+          bash ./scripts/release/package-ios-unsigned.sh \
+            "${app_path}" \
+            "release/ios/${package_name}-ios-arm64-v${version}-unsigned.ipa"
+
+      - name: Store unsigned iOS IPA outside pull requests
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-ios-arm64-unsigned-ipa
+          path: |
+            release/ios/*-ios-arm64-v*-unsigned.ipa
+            release/ios/*-ios-arm64-v*-unsigned.ipa.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Record iOS build status
+        if: always()
+        env:
+          BUILD_STATUS: ${{ job.status }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node ./scripts/release/write-build-status.mjs
+          --output release-status/ios-arm64-unsigned-ipa.status.json
+          --id ios-arm64-unsigned-ipa
+          --label 'iOS ARM64 IPA não assinado'
+          --platform ios
+          --arch arm64
+          --target aarch64-apple-ios
+          --artifact ci-ios-arm64-unsigned-ipa
+
+      - name: Store iOS build status outside pull requests
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-status-ios-arm64-unsigned-ipa
+          path: release-status/ios-arm64-unsigned-ipa.status.json
+          if-no-files-found: error
+          retention-days: 7

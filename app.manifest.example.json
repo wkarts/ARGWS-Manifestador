@@ -1,0 +1,28 @@
+{
+  "appName": "Minha Aplicação",
+  "shortName": "MinhaApp",
+  "productName": "Minha Aplicação Desktop Web",
+  "identifier": "br.com.minhaempresa.minhaapp",
+  "packageName": "minha-app-desktop-web",
+  "version": "1.0.0",
+  "developer": "Minha Empresa",
+  "localDataDir": "minha_app",
+  "storagePrefix": "minha-app",
+  "assets": {
+    "logoLight": "branding/logo-light.png",
+    "logoDark": "branding/logo-dark.png",
+    "logoMark": "branding/logo-mark.png",
+    "iconPng": "branding/icon.png",
+    "iconIco": "branding/icon.ico",
+    "trayIcon": "branding/tray-icon.png"
+  },
+  "mobile": {
+    "enabled": true,
+    "androidPackage": "br.com.minhaempresa.minhaapp",
+    "iosBundleIdentifier": "br.com.minhaempresa.minhaapp",
+    "localDatabase": "sqlite",
+    "standaloneSupported": true,
+    "restClientSupported": true,
+    "remoteWebView": false
+  }
+}

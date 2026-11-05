@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+  <infNFe Id="NFe35261111111111111111550010000000011000000010" versao="4.00">
+    <ide>
+      <cUF>35</cUF><natOp>VENDA</natOp><mod>55</mod><serie>1</serie><nNF>1</nNF>
+      <dhEmi>2026-11-04T10:00:00-03:00</dhEmi><tpNF>1</tpNF><tpAmb>2</tpAmb>
+    </ide>
+    <emit>
+      <CNPJ>11111111111111</CNPJ><xNome>Emitente de Teste</xNome><IE>110042490114</IE>
+      <enderEmit><xLgr>Rua de Teste</xLgr><nro>100</nro><xBairro>Centro</xBairro><cMun>3550308</cMun><xMun>São Paulo</xMun><CEP>01001000</CEP><UF>SP</UF><fone>1133334444</fone></enderEmit>
+    </emit>
+    <dest><CNPJ>22222222222222</CNPJ><xNome>Destinatário de Teste</xNome></dest>
+    <det nItem="1">
+      <prod><cProd>001</cProd><xProd>Produto de Teste</xProd><NCM>12345678</NCM><CFOP>5102</CFOP><uCom>UN</uCom><qCom>2.0000</qCom><vUnCom>10.00</vUnCom><uTrib>UN</uTrib><qTrib>2.0000</qTrib><vUnTrib>10.00</vUnTrib><vProd>20.00</vProd></prod>
+      <imposto><ICMS><ICMS00><orig>0</orig><CST>00</CST><vBC>20.00</vBC><pICMS>18.00</pICMS><vICMS>3.60</vICMS></ICMS00></ICMS></imposto>
+    </det>
+    <total><ICMSTot><vBC>20.00</vBC><vICMS>3.60</vICMS><vProd>20.00</vProd><vFrete>0.00</vFrete><vDesc>0.00</vDesc><vIPI>0.00</vIPI><vOutro>0.00</vOutro><vNF>20.00</vNF><vST>0.00</vST></ICMSTot></total>
+  </infNFe>
+</NFe>

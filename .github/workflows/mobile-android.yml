@@ -1,0 +1,193 @@
+name: Mobile Android
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "src-tauri/**"
+      - "scripts/ci/run-tauri.mjs"
+      - "scripts/mobile/**"
+      - "scripts/release/write-build-status.mjs"
+      - ".github/workflows/mobile-android.yml"
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+      - "src-tauri/**"
+      - "scripts/ci/run-tauri.mjs"
+      - "scripts/mobile/**"
+      - "scripts/release/write-build-status.mjs"
+      - ".github/workflows/mobile-android.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: "24"
+  ANDROID_API_LEVEL: "35"
+  ANDROID_BUILD_TOOLS: "35.0.0"
+  ANDROID_NDK_VERSION: "27.2.12479018"
+
+jobs:
+  android:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: android-arm64-apk
+            label: Android APK ARM64 instalável
+            kind: apk
+            arch: arm64
+            target: aarch64-linux-android
+            build_args: --target aarch64 --apk --debug --ci
+            artifact: ci-android-arm64-apk
+            extension: apk
+          - id: android-aab
+            label: Android AAB ARM64 não assinado
+            kind: aab
+            arch: arm64
+            target: android-aab
+            build_args: --target aarch64 --aab --ci
+            artifact: ci-android-aab
+            extension: aab
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK and NDK components
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+          {
+            echo "ANDROID_NDK_HOME=${sdk_root}/ndk/${ANDROID_NDK_VERSION}"
+            echo "NDK_HOME=${sdk_root}/ndk/${ANDROID_NDK_VERSION}"
+          } >> "${GITHUB_ENV}"
+          {
+            echo "${sdk_root}/platform-tools"
+            echo "${sdk_root}/build-tools/${ANDROID_BUILD_TOOLS}"
+          } >> "${GITHUB_PATH}"
+
+      - name: Setup Rust Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: ci-mobile-android-${{ matrix.kind }}
+          cache-on-failure: true
+
+      - name: Install frontend dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Validate version and Cargo lockfile
+        shell: bash
+        run: |
+          npm run ci:version
+          cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
+
+      - name: Build local Vue frontend and Tauri resources
+        run: npm run build:web:tauri
+
+      - name: Initialize Android project idempotently
+        run: npm run tauri:android:init
+
+      - name: Build ${{ matrix.kind }} with Tauri Android
+        run: npm run tauri -- android build --features mobile ${{ matrix.build_args }}
+
+      - name: Collect and validate Android artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_name="$(node -p "require('./package.json').name")"
+          version="$(tr -d '\r\n' < VERSION)"
+          node ./scripts/mobile/collect-android-artifact.mjs \
+            --kind "${{ matrix.kind }}" \
+            --input src-tauri/gen/android/app/build/outputs \
+            --output release/android \
+            --product "${package_name}" \
+            --version "${version}"
+          artifact_path="$(find release/android -maxdepth 1 -type f -name '*.${{ matrix.extension }}' -print -quit)"
+          unzip -tq "${artifact_path}" >/dev/null
+          if [[ "${{ matrix.kind }}" == "apk" ]]; then
+            apksigner verify --verbose "${artifact_path}"
+          fi
+
+      - name: Store Android artifact outside pull requests
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/android/*.${{ matrix.extension }}
+            release/android/*.${{ matrix.extension }}.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Record Android build status
+        if: always()
+        env:
+          BUILD_STATUS: ${{ job.status }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node ./scripts/release/write-build-status.mjs
+          --output release-status/${{ matrix.id }}.status.json
+          --id ${{ matrix.id }}
+          --label '${{ matrix.label }}'
+          --platform android
+          --arch ${{ matrix.arch }}
+          --target ${{ matrix.target }}
+          --artifact ${{ matrix.artifact }}
+
+      - name: Store Android build status outside pull requests
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-status-${{ matrix.id }}
+          path: release-status/${{ matrix.id }}.status.json
+          if-no-files-found: error
+          retention-days: 7
