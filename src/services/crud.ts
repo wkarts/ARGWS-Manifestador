@@ -141,12 +141,12 @@ export async function getManifestadorSummary(sessionToken: string, empresaId?: n
   return invokeCommand<GenericRecord>("manifestador_summary", { session_token: sessionToken, empresa_id: empresaId ?? null });
 }
 
-export async function getManifestadorConfig(sessionToken: string): Promise<GenericRecord> {
-  return invokeCommand<GenericRecord>("manifestador_config_get", { session_token: sessionToken });
+export async function getManifestadorConfig(sessionToken: string, empresaId: number): Promise<GenericRecord> {
+  return invokeCommand<GenericRecord>("manifestador_config_get", { empresa_id: empresaId, session_token: sessionToken });
 }
 
-export async function saveManifestadorConfig(sessionToken: string, payload: GenericRecord): Promise<GenericRecord> {
-  return invokeCommand<GenericRecord>("manifestador_config_save", { session_token: sessionToken, payload });
+export async function saveManifestadorConfig(sessionToken: string, empresaId: number, payload: GenericRecord): Promise<GenericRecord> {
+  return invokeCommand<GenericRecord>("manifestador_config_save", { empresa_id: empresaId, session_token: sessionToken, payload });
 }
 
 export async function getManifestadorCompanyConfig(sessionToken: string, empresaId: number): Promise<GenericRecord> {
@@ -205,8 +205,8 @@ export async function sendManifestadorAccounting(
   });
 }
 
-export async function testManifestadorProvider(sessionToken: string): Promise<GenericRecord> {
-  return invokeCommand<GenericRecord>("manifestador_provider_test", { session_token: sessionToken });
+export async function testManifestadorProvider(sessionToken: string, empresaId: number): Promise<GenericRecord> {
+  return invokeCommand<GenericRecord>("manifestador_provider_test", { empresa_id: empresaId, session_token: sessionToken });
 }
 
 export async function listAppLogs(sessionToken: string, filters: Record<string, unknown> = {}): Promise<GenericRecord[]> {

@@ -1,6 +1,6 @@
 # Componente genérico de licenciamento para Rust + Tauri
 
-Esta versão foi ajustada para aproximar o comportamento do Delphi e corrigir o fluxo estrutural do componente.
+Esta versão foi ajustada para aproximar o comportamento do anterior e corrigir o fluxo estrutural do componente.
 
 ## O que mudou
 

@@ -1,4 +1,4 @@
-# Manifestador NF-e Tauri
+# Manifestador NF-e
 
 Aplicação nova do Manifestador NF-e para desktop Windows, Web/PWA, Android, iOS e runtimes headless, reconstruída sobre Tauri 2, Rust, Vue 3, TypeScript, SQLite, Pinia e Vue Router.
 
@@ -19,7 +19,7 @@ Aplicação nova do Manifestador NF-e para desktop Windows, Web/PWA, Android, iO
 - Layout profissional e responsivo.
 - Sidebar configurável.
 - Módulos opcionais por configuração.
-- Dashboard modelo reaproveitável.
+- Visão fiscal com indicadores reais da empresa selecionada.
 - Branding personalizável.
 - Estrutura preparada para API interna, integrações, serviço e modo headless.
 - Android APK/AAB e iOS ARM64 com IPA não assinado, usando o mesmo frontend local e SQLite.
@@ -49,7 +49,7 @@ Aplicação nova do Manifestador NF-e para desktop Windows, Web/PWA, Android, iO
 
 A versão 0.1.19 reforça o suporte multi-banco sem trocar o banco principal do desktop:
 
-- SQLite continua sendo o banco funcional padrão do template.
+- SQLite continua sendo o banco funcional padrão da aplicação.
 - MySQL/MariaDB e PostgreSQL possuem health check e migrations por feature Rust.
 - Firebird permanece fora do escopo funcional por compatibilidade.
 - `/docs` e `/openapi.json` respeitam a segurança da API interna.
@@ -113,7 +113,7 @@ src/config/navigation.ts
 
 ## Escopo fiscal
 
-O SQLite local é o banco funcional da aplicação e recebe a migração das tabelas legadas de empresas, notas, itens e histórico. MySQL/PostgreSQL continuam disponíveis para os recursos gerais do runtime. A leitura direta de um arquivo Firebird exige que o ambiente forneça o driver e as credenciais correspondentes; a reconstrução não presume um arquivo `.FDB` ou credenciais que não vieram no pacote Delphi.
+O SQLite local é o banco funcional da aplicação e recebe a migração das tabelas legadas de empresas, notas, itens e histórico. MySQL/PostgreSQL continuam disponíveis para os recursos gerais do runtime. A leitura direta de um arquivo Firebird exige que o ambiente forneça o driver e as credenciais correspondentes; a reconstrução não presume um arquivo `.FDB` ou credenciais que não foram fornecidos.
 
 
 ## Etapa 2 funcional - 0.1.8
@@ -130,7 +130,7 @@ Implementações adicionadas nesta versão:
 - Tray Tauri 2 com restaurar, status e sair definitivamente.
 - Comandos de serviço Windows executam `sc.exe` para instalar/controlar o executável atual em modo `--mode=headless-api`.
 - Preview de impressão em janela própria.
-- Dashboard com dados reais de logs, banco, API e integrações.
+- Visão fiscal por empresa; logs e diagnósticos permanecem nas áreas administrativas.
 
 ### Etapa 2.2 — multi-banco, API desktop controlável e serviços
 
@@ -191,6 +191,6 @@ Hook local recomendado:
 git config core.hooksPath .githooks
 ```
 
-## Release em repositórios derivados
+## Release
 
-Este template não possui mais URL fixa de repositório no `semantic-release`. Em GitHub Actions, o repositório é detectado automaticamente por `GITHUB_REPOSITORY`. Consulte `docs/RELEASE_REPOSITORY.md`.
+A aplicação não possui mais URL fixa de repositório no `semantic-release`. Em GitHub Actions, o repositório é detectado automaticamente por `GITHUB_REPOSITORY`. Consulte `docs/RELEASE_REPOSITORY.md`.

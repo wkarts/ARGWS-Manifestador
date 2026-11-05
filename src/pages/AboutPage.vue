@@ -3,14 +3,14 @@ import { onMounted, ref } from "vue";
 import BasePage from "../components/base/BasePage.vue";
 import BaseSectionCard from "../components/base/BaseSectionCard.vue";
 import { getSystemInfo, type GenericRecord } from "../services/crud";
-import { appFeatures, projectConfig } from "../config/projectConfig";
+import { projectConfig } from "../config/projectConfig";
 
 const info = ref<GenericRecord>({});
 onMounted(async () => { try { info.value = await getSystemInfo(); } catch { info.value = {}; } });
 </script>
 
 <template>
-  <BasePage title="Sobre" subtitle="Informações da aplicação, ambiente e stack técnica.">
+  <BasePage title="Sobre" subtitle="Informações do Manifestador NF-e.">
     <div class="grid columns-2 mobile-columns-1">
       <BaseSectionCard title="Aplicação">
         <div class="info-grid compact-info">
@@ -22,10 +22,9 @@ onMounted(async () => { try { info.value = await getSystemInfo(); } catch { info
           <div class="info-item"><strong>Ambiente</strong><code>{{ projectConfig.app.mode }}</code></div>
         </div>
       </BaseSectionCard>
-      <BaseSectionCard title="Stack técnica">
-        <div class="module-chip-grid">
-          <span class="module-chip enabled">Tauri 2</span><span class="module-chip enabled">Rust</span><span class="module-chip enabled">Vue 3</span><span class="module-chip enabled">TypeScript</span><span class="module-chip enabled">SQLite</span><span class="module-chip enabled">Pinia</span><span class="module-chip enabled">Vue Router</span>
-        </div>
+      <BaseSectionCard title="Manifestador NF-e">
+        <p>Consulta e organização de NF-e destinadas por empresa, importação de XML, acompanhamento de manifestações e preparação de documentos para a contabilidade.</p>
+        <p>O histórico de cada nota permite conferir retornos e protocolos. Operações externas dependem da configuração fiscal e dos serviços disponíveis.</p>
       </BaseSectionCard>
       <BaseSectionCard title="Dados locais">
         <div class="info-grid compact-info">
@@ -33,11 +32,7 @@ onMounted(async () => { try { info.value = await getSystemInfo(); } catch { info
           <div class="info-item"><strong>Dados</strong><code>{{ info.data_dir || '-' }}</code></div>
         </div>
       </BaseSectionCard>
-      <BaseSectionCard title="Módulos">
-        <div class="module-chip-grid">
-          <span v-for="(enabled, key) in appFeatures" :key="key" class="module-chip" :class="enabled ? 'enabled' : 'disabled'">{{ key }}: {{ enabled ? 'ativo' : 'oculto' }}</span>
-        </div>
-      </BaseSectionCard>
+
     </div>
   </BasePage>
 </template>
