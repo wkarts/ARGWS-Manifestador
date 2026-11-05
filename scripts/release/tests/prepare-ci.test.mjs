@@ -1,0 +1,53 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+test('release preparation uses local immutable tags, repeats safely and refuses API failure', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'manifestador-release-plan-'));
+  const checkout = path.join(temp, 'checkout'), remote = path.join(temp, 'remote.git'), bin = path.join(temp, 'bin');
+  const command = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  try {
+    fs.mkdirSync(bin);
+    command(temp, 'init', '--bare', remote);
+    command(temp, 'clone', '--shared', root, checkout);
+    command(checkout, 'remote', 'set-url', 'origin', remote);
+    for (const tag of command(checkout, 'tag', '--list').split('\n').filter(Boolean)) command(checkout, 'tag', '-d', tag);
+    command(checkout, 'config', 'user.name', 'Fixture');
+    command(checkout, 'config', 'user.email', 'fixture@example.invalid');
+    command(checkout, 'commit', '--allow-empty', '-m', 'fix: fixture release');
+    const source = command(checkout, 'rev-parse', 'HEAD');
+    command(checkout, 'tag', 'v1.0.0');
+    command(checkout, 'push', 'origin', 'HEAD:refs/heads/develop', 'refs/tags/v1.0.0');
+    fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\nif [ "$FAIL_GH" = 1 ]; then exit 1; fi\nprintf "%s" "$FAKE_RELEASES"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'cargo'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    const output = path.join(temp, 'output');
+    const run = (extra = {}) => {
+      fs.writeFileSync(output, '');
+      return spawnSync(process.execPath, [path.join(root, 'scripts/release/prepare-ci.mjs')], { cwd: checkout, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CARGO: path.join(bin, 'cargo'), GITHUB_OUTPUT: output, GITHUB_REPOSITORY: 'fixture/repo', RELEASE_BRANCH: 'develop', RELEASE_SOURCE_SHA: source, FAKE_RELEASES: '[[]]', ...extra } });
+    };
+    const failure = run({ FAIL_GH: '1' });
+    assert.notEqual(failure.status, 0);
+    assert.equal(command(checkout, 'tag', '--list'), 'v1.0.0');
+    const first = run();
+    assert.equal(first.status, 0, first.stderr);
+    assert.match(fs.readFileSync(output, 'utf8'), /version=1.0.1/);
+    assert.match(fs.readFileSync(output, 'utf8'), /prerelease=true/);
+    const reserved = command(checkout, 'rev-parse', 'v1.0.1');
+    assert.equal(command(checkout, 'rev-parse', 'v1.0.1^'), source);
+    command(checkout, 'checkout', '--detach', source);
+    const retry = run({ FAKE_RELEASES: '[[{"tag_name":"v1.0.1","draft":true,"prerelease":true}]]' });
+    assert.equal(retry.status, 0, retry.stderr);
+    assert.equal(command(checkout, 'rev-parse', 'v1.0.1'), reserved);
+    const published = run({ FAKE_RELEASES: '[[{"tag_name":"v1.0.1","draft":false,"prerelease":true}]]' });
+    assert.equal(published.status, 0, published.stderr);
+    assert.match(fs.readFileSync(output, 'utf8'), /published=false/);
+    const conflict = run({ FAKE_RELEASES: '[[{"tag_name":"v1.0.1","draft":false,"prerelease":false}]]' });
+    assert.notEqual(conflict.status, 0);
+    assert.equal(command(checkout, 'rev-parse', 'v1.0.1'), reserved);
+    assert.equal(command(checkout, 'ls-remote', 'origin', 'refs/heads/develop').split('\t')[0], source);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
