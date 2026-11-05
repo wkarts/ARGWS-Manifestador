@@ -1,3 +1,17 @@
+# 1.0.0 (2026-11-05)
+
+
+### Bug Fixes
+
+* **ci:** repair Android setup and exercise fiscal migrations ([1a09958](https://github.com/wkarts/ARGWS-Manifestador/commit/1a09958ccd34ad354de51b709f54f6027d2cf82d))
+* **theme:** preserve the original application font ([2b20209](https://github.com/wkarts/ARGWS-Manifestador/commit/2b20209b5d6da906271cd3720a5d9fce82b1538b))
+
+
+### Features
+
+* **manifestador:** inicia reconstrução em Tauri/Rust 0.1.0 ([9f0abe5](https://github.com/wkarts/ARGWS-Manifestador/commit/9f0abe5c34d0403d37804437872a8686be30b1ca))
+* **theme:** add ARGWS identity as default without replacing preferences ([d015488](https://github.com/wkarts/ARGWS-Manifestador/commit/d0154883c896d5eb16d6d2725b47d23edeca13da))
+
 # [1.2.0](https://github.com/wwsoftwares/manifestador-nfe-desktop/compare/v1.1.0...v1.2.0) (2026-08-09)
 
 

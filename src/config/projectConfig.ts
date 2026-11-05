@@ -13,7 +13,7 @@ export const projectConfig = {
     windowTitle: "Manifestador NF-e",
     subtitle: "distribuição fiscal • manifestação • XML • Tauri/Rust",
     description: "Aplicação nova para consultar, manifestar, baixar, importar, organizar e enviar XMLs de NF-e destinadas.",
-    version: "0.2.0",
+    version: "1.0.0",
     mode: "desktop" as RuntimeMode,
     identifier: "br.com.wwsoftwares.manifestador-nfe",
     developer: "Wallace Kleiton – WWSoftware's",
