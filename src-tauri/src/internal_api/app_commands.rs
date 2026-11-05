@@ -1625,12 +1625,24 @@ pub(crate) fn execute_command(
             crate::manifestador::summary(&conn, company_id)
         }
         "manifestador_config_get" => {
+            if get_i64(&args, "empresa_id") <= 0 {
+                return Err("Informe a empresa dos parâmetros fiscais.".into());
+            }
             let conn = open_connection(&state.db_path)?;
-            crate::manifestador::get_config(&conn)
+            let identity = api_identity.as_ref().ok_or("Sessão não encontrada.")?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
+            crate::manifestador::get_config(&conn, company_id)
         }
         "manifestador_config_save" => {
+            if get_i64(&args, "empresa_id") <= 0 {
+                return Err("Informe a empresa dos parâmetros fiscais.".into());
+            }
             let conn = open_connection(&state.db_path)?;
-            crate::manifestador::save_config(&conn, &get_payload(&args))
+            let identity = api_identity.as_ref().ok_or("Sessão não encontrada.")?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
+            crate::manifestador::save_config(&conn, company_id, &get_payload(&args))
         }
         "manifestador_company_config_get" => {
             let conn = open_connection(&state.db_path)?;
@@ -1925,8 +1937,16 @@ pub(crate) fn execute_command(
             )
         }
         "manifestador_provider_test" => {
+            if get_i64(&args, "empresa_id") <= 0 {
+                return Err("Informe a empresa dos parâmetros fiscais.".into());
+            }
             let conn = open_connection(&state.db_path)?;
-            let Some((endpoint, timeout)) = crate::manifestador::provider_endpoint(&conn)? else {
+            let identity = api_identity.as_ref().ok_or("Sessão não encontrada.")?;
+            let company_id =
+                required_manifestador_company(&conn, identity, Some(get_i64(&args, "empresa_id")))?;
+            let Some((endpoint, timeout)) =
+                crate::manifestador::provider_endpoint(&conn, company_id)?
+            else {
                 return Ok(json!({
                     "configured": false,
                     "message": "Nenhum endpoint externo configurado."

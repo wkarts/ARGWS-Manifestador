@@ -2,9 +2,9 @@
 
 ## Base
 
-- Reconstrução nova baseada na template Tauri 2 + Rust + Vue 3 + TypeScript.
+- Reconstrução nova com Tauri 2 + Rust + Vue 3 + TypeScript.
 - Identidade, ícones, metadados e comandos substituídos para Manifestador NF-e.
-- Código Delphi preservado apenas em `legacy-reference/` como referência de migração.
+- Código anterior preservado apenas em `legacy-reference/` como referência de migração.
 
 ## Correções desta rodada
 

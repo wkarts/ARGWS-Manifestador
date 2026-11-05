@@ -196,7 +196,7 @@ const groupState = reactive<Record<MenuSection, boolean>>({
 });
 
 const sections: { key: MenuSection; title: string; subtitle: string }[] = [
-  { key: "dashboard", title: "Dashboard", subtitle: "visão geral" },
+  { key: "dashboard", title: "Visão fiscal", subtitle: "visão geral" },
   { key: "cadastro", title: "Cadastro", subtitle: "dados base" },
   { key: "sistema", title: "Sistema", subtitle: "segurança e parâmetros" },
   { key: "ferramentas", title: "Ferramentas", subtitle: "runtime e integrações" },
@@ -625,7 +625,7 @@ function dashboardTab(): WorkspaceTab {
     key: "/",
     route: "/",
     fullPath: "/",
-    title: "Dashboard",
+    title: "Visão fiscal",
     eyebrow: "Visão geral",
     description: "Resumo operacional.",
     pinned: true,
@@ -1104,7 +1104,7 @@ onBeforeUnmount(() => {
               <span v-if="tab.pinned" class="workspace-tab-pin"><IconSymbol name="home" :size="12" /></span>
               <span v-else class="workspace-tab-close" role="button" aria-label="Fechar guia" @click="closeTab(tab, $event)"><IconSymbol name="close" :size="12" /></span>
             </button>
-            <button type="button" class="workspace-tab-add" title="Abrir Dashboard em uma guia" @click="openDashboardTab"><IconSymbol name="plus" :size="15" /></button>
+            <button type="button" class="workspace-tab-add" title="Abrir visão fiscal em uma guia" @click="openDashboardTab"><IconSymbol name="plus" :size="15" /></button>
           </div>
         </div>
 

@@ -426,7 +426,9 @@ test('contrato mobile mantém frontend local, features isoladas e IPA real sem c
   assert.match(releaseWorkflow, /pod --version/);
   assert.match(routerSource, /Rota exclusiva do runtime desktop bloqueada no mobile nativo/);
   assert.match(routerSource, /desktopOnly: true/);
-  assert.match(navigationSource, /Parâmetros.*, desktopOnly: true/);
+  const systemSettingsMenu = navigationSource.split("\n").find((line) => line.includes('route: "/sistema"'));
+  assert.ok(systemSettingsMenu, "menu de configurações da aplicação deve existir");
+  assert.match(systemSettingsMenu, /desktopOnly: true/);
   assert.match(ipaScript, /Payload/);
   assert.match(ipaScript, /CFBundleExecutable/);
   assert.match(ipaScript, /platform IOSSIMULATOR/);
@@ -560,4 +562,22 @@ test('bootstrap é interno, política de senha é central e mobile suporta modo 
   assert.match(mobileProvider, /\/api\/command/);
   assert.match(mobileConnection, /sessionStorage/);
   assert.doesNotMatch(harness, /ferias_colaboradores|funcionarios|batidas|Ponto Manager/i);
+});
+
+
+test('CI e release Android evitam o pacote SDK tools removido', () => {
+  for (const file of ['mobile-android.yml', 'release.yml']) {
+    const workflow = fs.readFileSync(path.join(repositoryRoot, '.github', 'workflows', file), 'utf8');
+    const setupSteps = [...workflow.matchAll(/uses: android-actions\/setup-android@[^\n]+([\s\S]*?)(?=\n      - name:|$)/g)];
+    assert.equal(setupSteps.length, 1, `${file}: um setup Android deve ser validado`);
+    const packages = setupSteps[0][1].match(/packages: (.+)/)?.[1].trim().split(/\s+/);
+    assert.ok(packages?.includes('platform-tools'), `${file}: declare platform-tools explicitamente`);
+    assert.ok(!packages.includes('tools'), `${file}: não instale o pacote tools removido`);
+  }
+  const androidWorkflow = fs.readFileSync(path.join(repositoryRoot, '.github', 'workflows', 'mobile-android.yml'), 'utf8');
+  assert.equal(
+    (androidWorkflow.match(/- "\.github\/workflows\/release\.yml"/g) || []).length,
+    2,
+    'Alterações da release devem disparar validação Android em push e pull_request',
+  );
 });

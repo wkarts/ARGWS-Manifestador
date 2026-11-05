@@ -12,6 +12,7 @@ on:
       - "scripts/mobile/**"
       - "scripts/release/write-build-status.mjs"
       - ".github/workflows/mobile-android.yml"
+      - ".github/workflows/release.yml"
   push:
     branches:
       - main
@@ -26,6 +27,7 @@ on:
       - "scripts/mobile/**"
       - "scripts/release/write-build-status.mjs"
       - ".github/workflows/mobile-android.yml"
+      - ".github/workflows/release.yml"
 
 permissions:
   contents: read

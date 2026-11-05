@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import { useSessionStore } from "../stores/session";
+import CompanyFiscalSettings from "../components/CompanyFiscalSettings.vue";
 import AppModal from "../components/AppModal.vue";
 import BasePage from "../components/base/BasePage.vue";
 import AppSwitch from "../components/AppSwitch.vue";
@@ -16,6 +19,8 @@ import { booleanLabel, formatCpfCnpj, formatPhone } from "../services/format";
 import { showSplashError, showSplashInfo, showSplashSuccess, showSplashWarning } from "../services/splash";
 import { appConfirm } from "../services/dialog";
 
+const route = useRoute();
+const session = useSessionStore();
 const rows = ref<GenericRecord[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -205,7 +210,12 @@ async function removeRow(id: number) {
   }
 }
 
-onMounted(load);
+function openRequestedCompany() {
+  const id = Number(route.query.empresa);
+  if (Number.isInteger(id) && id > 0) void editRow(id);
+}
+watch(() => route.query.empresa, openRequestedCompany);
+onMounted(() => { void load(); openRequestedCompany(); });
 </script>
 
 <template>
@@ -374,6 +384,8 @@ onMounted(load);
           </div>
         </div>
 
+        <CompanyFiscalSettings v-if="form.id && modalOpen && session.can('manifestador:view')" :key="form.id" :empresa-id="form.id" />
+        <p v-else-if="!form.id">Salve a empresa para configurar seus parâmetros fiscais.</p>
         <div class="section-title">Observações</div>
         <div class="grid columns-2 mobile-columns-1">
           <div class="field span-2">

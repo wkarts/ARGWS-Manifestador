@@ -8,6 +8,7 @@ on:
       - completed
     branches:
       - main
+      - develop
   workflow_dispatch:
     inputs:
       release_tag:
@@ -36,11 +37,12 @@ jobs:
   prepare-release:
     name: Resolve version and immutable tag
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || github.ref_name == 'develop')) ||
       (
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'main'
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'develop')
       )
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -76,18 +78,20 @@ jobs:
           cargo metadata --manifest-path src-tauri/Cargo.toml
           --locked --format-version 1 > /dev/null
 
-      - name: Resolve semantic release or resume tag
+      - name: Resolve numeric version or resume tag
         id: resolve
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REQUESTED_TAG: ${{ inputs.release_tag }}
+          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          RELEASE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail
 
           if [[ -z "${REQUESTED_TAG}" ]]; then
-            node ./scripts/release/run-semantic-release.mjs
+            node ./scripts/release/prepare-ci.mjs
             exit 0
           fi
 
@@ -96,15 +100,20 @@ jobs:
             exit 1
           fi
 
-          git fetch --force --tags origin "${REQUESTED_TAG}"
+          git fetch origin "refs/tags/${REQUESTED_TAG}:refs/tags/${REQUESTED_TAG}"
           node ./scripts/ci/check-version-sync.mjs --tag "${REQUESTED_TAG}"
 
-          if release_json="$(gh release view "${REQUESTED_TAG}" --json isDraft 2>/dev/null)"; then
+          release_error="$(mktemp)"
+          if release_json="$(gh release view "${REQUESTED_TAG}" --json isDraft,isPrerelease 2>"${release_error}")"; then
             if [[ "$(jq -r '.isDraft' <<<"${release_json}")" != "true" ]]; then
               echo "A release ${REQUESTED_TAG} já está publicada e não será reaberta." >&2
               exit 1
             fi
+          elif ! grep -Eqi 'release not found|HTTP 404' "${release_error}"; then
+            cat "${release_error}" >&2
+            exit 1
           fi
+          rm -f "${release_error}"
 
           version="$(tr -d '\r\n' < VERSION)"
           product_name="$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json', 'utf8')).productName")"
@@ -116,7 +125,10 @@ jobs:
             echo "tag=${REQUESTED_TAG}"
             echo "name=${product_name} v${version}"
             echo "notes_b64=$(printf '%s' "${notes}" | base64 -w0)"
-            if [[ "${version}" == *-* ]]; then
+            # Channel is release metadata, not a suffix in the product version.
+            if [[ -n "${release_json:-}" ]]; then
+              echo "prerelease=$(jq -r '.isPrerelease' <<<"${release_json}")"
+            elif git for-each-ref --format='%(contents)' "refs/tags/${REQUESTED_TAG}" | grep -q '"channel":"develop"'; then
               echo "prerelease=true"
             else
               echo "prerelease=false"
@@ -532,6 +544,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK and NDK components
         shell: bash
@@ -803,15 +817,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          if release_json="$(gh release view "${RELEASE_TAG}" --json isDraft 2>/dev/null)"; then
+          release_error="$(mktemp)"
+          if release_json="$(gh release view "${RELEASE_TAG}" --json isDraft,isPrerelease 2>"${release_error}")"; then
             if [[ "$(jq -r '.isDraft' <<<"${release_json}")" != "true" ]]; then
               echo "A release ${RELEASE_TAG} já está publicada e não será reaberta." >&2
+              exit 1
+            fi
+            if [[ "$(jq -r '.isPrerelease' <<<"${release_json}")" != "${RELEASE_PRERELEASE}" ]]; then
+              echo "Canal da release existente diverge do canal solicitado." >&2
               exit 1
             fi
             gh release edit "${RELEASE_TAG}" \
               --title "${RELEASE_NAME}" \
               --notes-file release-notes.md
           else
+            if ! grep -Eqi 'release not found|HTTP 404' "${release_error}"; then
+              cat "${release_error}" >&2
+              exit 1
+            fi
             create_args=(
               "${RELEASE_TAG}"
               --draft
@@ -824,6 +847,7 @@ jobs:
             fi
             gh release create "${create_args[@]}"
           fi
+          rm -f "${release_error}"
 
       - name: Upload assets idempotently
         run: >-
@@ -833,7 +857,13 @@ jobs:
 
       - name: Publish complete or explicitly authorized draft
         if: steps.policy.outputs.publish == 'true'
-        run: gh release edit "${RELEASE_TAG}" --draft=false
+        shell: bash
+        run: |
+          if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
+            gh release edit "${RELEASE_TAG}" --draft=false --prerelease --latest=false
+          else
+            gh release edit "${RELEASE_TAG}" --draft=false --prerelease=false --latest
+          fi
 
       - name: Release summary
         if: always()
