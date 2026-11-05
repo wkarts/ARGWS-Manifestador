@@ -9,12 +9,83 @@ const SUPPORTED: bool = cfg!(all(
     any(target_arch = "x86", target_arch = "x86_64")
 ));
 
+#[cfg(any(
+    test,
+    all(
+        any(target_os = "windows", target_os = "linux"),
+        any(target_arch = "x86", target_arch = "x86_64")
+    )
+))]
+const SCHEMAS: &[(&str, &[u8])] = &[
+    (
+        "nfe_v4.00.xsd",
+        include_bytes!("../resources/fiscal/schemas/nfe/nfe_v4.00.xsd"),
+    ),
+    (
+        "leiauteNFe_v4.00.xsd",
+        include_bytes!("../resources/fiscal/schemas/nfe/leiauteNFe_v4.00.xsd"),
+    ),
+    (
+        "xmldsig-core-schema_v1.01.xsd",
+        include_bytes!("../resources/fiscal/schemas/nfe/xmldsig-core-schema_v1.01.xsd"),
+    ),
+    (
+        "tiposBasico_v4.00.xsd",
+        include_bytes!("../resources/fiscal/schemas/nfe/tiposBasico_v4.00.xsd"),
+    ),
+    (
+        "DFeTiposBasicos_v1.00.xsd",
+        include_bytes!("../resources/fiscal/schemas/nfe/DFeTiposBasicos_v1.00.xsd"),
+    ),
+    (
+        "procNFe_v4.00.xsd",
+        include_bytes!("../resources/fiscal/schemas/nfe/procNFe_v4.00.xsd"),
+    ),
+];
+
+#[cfg(any(
+    test,
+    all(
+        any(target_os = "windows", target_os = "linux"),
+        any(target_arch = "x86", target_arch = "x86_64")
+    )
+))]
+fn bundled_schemas(data_dir: &Path) -> Result<std::path::PathBuf, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+    let mut hash = Sha256::new();
+    for (name, bytes) in SCHEMAS {
+        hash.update(name);
+        hash.update(bytes);
+    }
+    let directory = data_dir
+        .join("fiscal-schemas")
+        .join(format!("{:x}", hash.finalize()));
+    std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    for (name, bytes) in SCHEMAS {
+        let path = directory.join(name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut file) => file.write_all(bytes).map_err(|e| e.to_string())?,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if std::fs::read(&path).map_err(|e| e.to_string())? != *bytes {
+                    return Err(format!("Schema embarcado alterado: {name}. Restaure o pacote ou configure um diretório de schemas próprio."));
+                }
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(directory)
+}
+
 pub fn status() -> Value {
-    let configured = std::env::var_os("MANIFESTADOR_ACBR_NFE_MT_CDECL_LIBRARY").is_some()
-        && std::env::var_os("MANIFESTADOR_ACBR_SCHEMAS").is_some();
+    let configured = std::env::var_os("MANIFESTADOR_ACBR_NFE_MT_CDECL_LIBRARY").is_some();
     json!({"supported":SUPPORTED,"configured":configured,"engine":"ACBrLibNFe MT/cdecl",
         "message": if !SUPPORTED {"DANFE e XSD via ACBrLib exigem servidor Windows/Linux x86 ou x64. Use a conexão REST com um servidor configurado."}
-        else if !configured {"ACBrLib e schemas não configurados neste servidor. DANFE PDF e validação XSD indisponíveis."}
+        else if !configured {"ACBrLib não configurada neste servidor. DANFE PDF e validação XSD indisponíveis."}
         else {"ACBrLib configurada. A disponibilidade e os schemas serão verificados ao executar a operação."}})
 }
 
@@ -204,7 +275,11 @@ mod native {
             .lock()
             .map_err(|_| "Motor fiscal indisponível após falha anterior.")?;
         let library_path = configured_path("MANIFESTADOR_ACBR_NFE_MT_CDECL_LIBRARY", false)?;
-        let schemas = configured_path("MANIFESTADOR_ACBR_SCHEMAS", true)?;
+        let schemas = if std::env::var_os("MANIFESTADOR_ACBR_SCHEMAS").is_some() {
+            configured_path("MANIFESTADOR_ACBR_SCHEMAS", true)?
+        } else {
+            bundled_schemas(data_dir)?
+        };
         if !schemas.join("nfe_v4.00.xsd").is_file() {
             return Err("Pacote de schemas incompleto: nfe_v4.00.xsd ausente.".into());
         }
@@ -326,6 +401,35 @@ mod native {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn packaged_schemas_are_immutable_and_complete() {
+        let root = std::env::temp_dir().join(format!("nfe-schemas-{}", uuid::Uuid::new_v4()));
+        let path = bundled_schemas(&root).unwrap();
+        assert_eq!(path, bundled_schemas(&root).unwrap());
+        assert_eq!(std::fs::read_dir(&path).unwrap().count(), 6);
+        for (_, bytes) in SCHEMAS {
+            let mut reader = quick_xml::Reader::from_reader(*bytes);
+            loop {
+                match reader.read_event().unwrap() {
+                    quick_xml::events::Event::Empty(e) | quick_xml::events::Event::Start(e) => {
+                        if let Some(a) = e.try_get_attribute("schemaLocation").unwrap() {
+                            let name = std::str::from_utf8(&a.value).unwrap();
+                            assert!(
+                                SCHEMAS.iter().any(|(n, _)| *n == name),
+                                "Missing schema: {name}"
+                            );
+                        }
+                    }
+                    quick_xml::events::Event::Eof => break,
+                    _ => {}
+                }
+            }
+        }
+        std::fs::write(path.join("nfe_v4.00.xsd"), "changed").unwrap();
+        assert!(bundled_schemas(&root).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn rejects_summary_dtd_and_other_company() {
         assert!(check_xml("<resNFe/>").is_err());

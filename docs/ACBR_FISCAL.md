@@ -2,7 +2,7 @@
 
 O menu **Manifestador NF-e** concentra a consulta e as operações de manifestação. Na lista de documentos, **Validar XSD** valida o XML completo com ACBrLibNFe; **DANFE PDF** valida e solicita o PDF à mesma biblioteca. O antigo relatório HTML simplificado não é mais apresentado como DANFE.
 
-A integração exige ACBrLib instalada. Esta alteração **não embute binários ACBr nem schemas**, e sua homologação com o motor real permanece pendente. Sem configuração, dependências ou XML completo, a operação retorna erro explícito; não produz documento de demonstração nem registra aprovação fictícia. Os testes de contrato usam uma biblioteca artificial identificada como `contract-test-only`, exclusivamente nos testes; ela não faz parte do aplicativo distribuído.
+A integração exige ACBrLib instalada. Esta alteração **não embute binários ACBr**, e sua homologação com o motor real permanece pendente. Sem configuração, dependências ou XML completo, a operação retorna erro explícito; não produz documento de demonstração nem registra aprovação fictícia. Os testes de contrato usam uma biblioteca artificial identificada como `contract-test-only`, exclusivamente nos testes; ela não faz parte do aplicativo distribuído.
 
 ## Instalação no servidor ou desktop
 
@@ -12,10 +12,13 @@ Defina no ambiente do processo:
 
 ```dotenv
 MANIFESTADOR_ACBR_NFE_MT_CDECL_LIBRARY=/opt/manifestador/acbr/libacbrnfe64.so
+# Opcional: substituir o pacote de schemas fornecido
 MANIFESTADOR_ACBR_SCHEMAS=/opt/manifestador/acbr/Schemas/NFe
 ```
 
-Os valores são exemplos; use caminhos absolutos reais. No Windows, aponte para a DLL MT/cdecl e para o diretório de schemas. Instale as dependências exigidas pela compilação escolhida, inclusive a biblioteca de manipulação XML utilizada pelo ACBr. `SSLXmlSignLib=4` seleciona LibXml2. O diretório deve conter o pacote completo e atualizado de schemas NF-e 4.00, incluindo seus includes/imports; a presença de `nfe_v4.00.xsd` é apenas uma verificação preliminar. O operador deve registrar a revisão do pacote compatível com a vigência dos documentos e notas técnicas aplicáveis. O aplicativo não baixa nem atualiza schemas silenciosamente.
+Os valores são exemplos; use caminhos absolutos reais. No Windows, aponte para a DLL MT/cdecl e para o diretório de schemas. Instale as dependências exigidas pela compilação escolhida, inclusive a biblioteca de manipulação XML utilizada pelo ACBr. `SSLXmlSignLib=4` seleciona LibXml2. Sem `MANIFESTADOR_ACBR_SCHEMAS`, o aplicativo usa os seis XSD NF-e 4.00 extraídos, sem alterações, do pacote de referência já fornecido no repositório. A origem e os SHA-256 estão em `src-tauri/resources/fiscal/schemas/nfe/manifest.json`. Os arquivos e dependências são materializados em diretório identificado pelo hash do conteúdo; alterações inesperadas no cache são recusadas. O nome/data do pacote não é garantia de vigência fiscal.
+
+Quando definido, o diretório próprio deve conter o pacote completo e atualizado de schemas NF-e 4.00, incluindo seus includes/imports; a presença de `nfe_v4.00.xsd` é apenas uma verificação preliminar. O operador deve registrar a revisão do pacote compatível com a vigência dos documentos e notas técnicas aplicáveis. O aplicativo não baixa nem atualiza schemas silenciosamente.
 
 Não há distribuição ACBr nativa validada neste projeto para macOS, Linux ARM64, Android ou iOS. Nesses casos, os comandos fiscais podem ser atendidos por uma instalação Windows/Linux compatível através da conexão REST já existente. Isso não transforma o aplicativo local em um motor ACBr embarcado.
 
@@ -44,7 +47,7 @@ Examine o PDF produzido em uma execução pela interface; confira emitente, dest
 
 ## Origem e licença
 
-A implementação usa a interface pública documentada; não copia fontes ACBr nem redistribui DLL/SO ou XSD nesta PR. O portal descreve os fontes sob LGPL, e a página de licença da ACBrLib apresenta LGPL 2.1. Antes de distribuir uma compilação ou pacote de schemas, confira os avisos e a versão de licença do artefato específico, preserve atribuições e licença e disponibilize o código-fonte correspondente conforme os termos aplicáveis. A substituição da biblioteca pelo operador permanece possível; não há vinculação estática neste adaptador.
+A implementação usa a interface pública documentada; não copia fontes ACBr nem redistribui DLL/SO nesta PR. Os XSD de referência fornecidos são incorporados sem modificação, preservando seus comentários e avisos de origem. O portal descreve os fontes sob LGPL, e a página de licença da ACBrLib apresenta LGPL 2.1. Antes de distribuir uma compilação ou pacote de schemas, confira os avisos e a versão de licença do artefato específico, preserve atribuições e licença e disponibilize o código-fonte correspondente conforme os termos aplicáveis. A substituição da biblioteca pelo operador permanece possível; não há vinculação estática neste adaptador.
 
 Referências oficiais consultadas:
 
