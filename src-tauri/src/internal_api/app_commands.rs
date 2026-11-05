@@ -1815,6 +1815,9 @@ pub(crate) fn execute_command(
                     imported += 1;
                 }
             }
+            if mode == "native" {
+                crate::manifestador::commit_distribution_cursor(&conn, company_id, &response)?;
+            }
             Ok(json!({
                 "ok": true,
                 "mode": mode,
@@ -1861,8 +1864,8 @@ pub(crate) fn execute_command(
                 .optional()
                 .map_err(|err| format!("Falha ao localizar NF-e para download: {err}"))?
                 .ok_or_else(|| "NF-e não pertence à empresa ativa.".to_string())?;
-            if chave.as_bytes().get(20..22) == Some(b"65") {
-                return Err("Importe o XML completo da NFC-e. A distribuição de NF-e por NSU não se aplica a esse documento.".into());
+            if chave.as_bytes().get(20..22) != Some(b"55") {
+                return Err("Importe o XML completo deste documento. O serviço nativo de distribuição implementado é exclusivo de NF-e modelo 55.".into());
             }
             let request = json!({"empresa_id": company_id, "nota_id": nota_id, "chave": chave});
             if let Some(response) = crate::manifestador::call_provider(&conn, "download", &request)?
@@ -1919,7 +1922,7 @@ pub(crate) fn execute_command(
             if let Some(response) =
                 crate::manifestador::call_provider(&conn, "manifestar", &request)?
             {
-                let protocol = response.get("protocolo").and_then(Value::as_str);
+                let protocol = crate::manifestador::manifestation_protocol(&response)?;
                 let note = crate::manifestador::update_manifestation(
                     &conn,
                     note_id,

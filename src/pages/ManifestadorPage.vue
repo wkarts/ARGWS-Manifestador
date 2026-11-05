@@ -125,6 +125,11 @@ function statusLabel(row: GenericRecord) {
   return text(row.situacao, "Recebida");
 }
 
+function documentLabel(row: GenericRecord): string {
+  const model=text(row.chave).slice(20,22);
+  return ({"55":"NF-e","65":"NFC-e","57":"CT-e"} as Record<string,string>)[model] || text(row.tipo,"Documento");
+}
+
 function resetConfig() {
   Object.assign(config, defaultConfig());
 }
@@ -331,7 +336,7 @@ onMounted(load);
 </script>
 
 <template>
-  <BasePage title="NF-e e NFC-e" subtitle="Documentos fiscais, XML, DANFE e manifestação do destinatário de NF-e." icon="file">
+  <BasePage title="Documentos fiscais" subtitle="NF-e e NFC-e com PDF/XSD; CT-e com importação/XSD. Manifestação exclusiva de NF-e." icon="file">
     <p class="form-hint" role="status">{{ fiscalStatus.message }}</p>
     <template #actions>
       <button v-if="session.can('empresas:view')" class="secondary" type="button" :disabled="!currentCompanyId" @click="openConfig">Cadastro e parâmetros da empresa</button>
@@ -373,14 +378,14 @@ onMounted(load);
           <thead><tr><th>Documento</th><th>Emitente</th><th>Emissão</th><th>Valor</th><th>Manifestação</th><th>Download</th><th>NSU</th><th>Ações</th></tr></thead>
           <tbody>
             <tr v-for="row in rows" :key="number(row.id)">
-              <td><strong>{{ text(row.chave).slice(20, 22) === "65" ? "NFC-e" : "NF-e" }} {{ row.numero || "-" }}</strong><div class="muted-row">Série {{ row.serie || "-" }} · {{ row.chave || "sem chave" }}</div></td>
+              <td><strong>{{ documentLabel(row) }} {{ row.numero || "-" }}</strong><div class="muted-row">Série {{ row.serie || "-" }} · {{ row.chave || "sem chave" }}</div></td>
               <td>{{ row.nome || "-" }}<div class="muted-row">{{ row.cnpj || "-" }}</div></td>
               <td>{{ dateTime(row.emissao) }}</td>
               <td>{{ money(row.valor) }}</td>
               <td><span class="status-pill">{{ statusLabel(row) }}</span></td>
               <td>{{ Number(row.download) === 1 ? "Sim" : "Não" }}</td>
               <td>{{ row.nsu || "0" }}</td>
-              <td><div class="compact-actions actions"><button class="secondary" type="button" :disabled="saving" @click="fiscal(row, 'danfe')">DANFE PDF</button><button class="secondary" type="button" :disabled="saving" @click="fiscal(row, 'validate')">Validar XSD</button><button class="secondary" type="button" :disabled="!canManage" @click="download(row)">XML</button><button class="secondary" type="button" :disabled="!canManage || text(row.chave).slice(20, 22) === '65'" :title="text(row.chave).slice(20, 22) === '65' ? 'Manifestação do destinatário não se aplica à NFC-e' : 'Manifestar NF-e'" @click="openManifest(row)">Manifestar</button><button class="secondary" type="button" @click="openLogs(row)">Histórico</button></div></td>
+              <td><div class="compact-actions actions"><button class="secondary" type="button" :disabled="saving || !['55','65'].includes(text(row.chave).slice(20,22))" :title="text(row.chave).slice(20,22) === '57' ? 'DACTE ainda não implementado' : 'Gerar PDF'" @click="fiscal(row, 'danfe')">{{ text(row.chave).slice(20,22) === '57' ? 'DACTE indisponível' : 'DANFE PDF' }}</button><button class="secondary" type="button" :disabled="saving" @click="fiscal(row, 'validate')">Validar XSD</button><button class="secondary" type="button" :disabled="!canManage" @click="download(row)">XML</button><button class="secondary" type="button" :disabled="!canManage || text(row.chave).slice(20, 22) !== '55'" :title="text(row.chave).slice(20, 22) !== '55' ? 'Manifestação de NF-e não se aplica a este modelo' : 'Manifestar NF-e'" @click="openManifest(row)">Manifestar</button><button class="secondary" type="button" @click="openLogs(row)">Histórico</button></div></td>
             </tr>
             <tr v-if="!rows.length"><td colspan="8" class="empty-cell">{{ loading ? "Carregando notas..." : "Nenhum documento encontrado para a empresa ativa." }}</td></tr>
           </tbody>

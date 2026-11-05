@@ -11,6 +11,7 @@ mod migrations;
 mod manifestador;
 mod smtp_settings;
 mod fiscal_engine;
+mod fiscal_document;
 mod certificates;
 mod models;
 mod security;

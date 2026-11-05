@@ -77,6 +77,9 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Verify offline fiscal schema inventory
+        run: python3 scripts/fiscal/update-schemas.py --verify
+
       - name: Validate project structure
         run: python3 scripts/ci/validate-tauri-project.py --project . --mode static
 

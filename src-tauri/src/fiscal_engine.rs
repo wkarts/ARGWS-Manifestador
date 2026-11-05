@@ -5,32 +5,7 @@ use std::{path::Path, sync::Mutex};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 static ENGINE_LOCK: Mutex<()> = Mutex::new(());
 
-const SCHEMAS: &[(&str, &[u8])] = &[
-    (
-        "nfe_v4.00.xsd",
-        include_bytes!("../resources/fiscal/schemas/nfe/nfe_v4.00.xsd"),
-    ),
-    (
-        "leiauteNFe_v4.00.xsd",
-        include_bytes!("../resources/fiscal/schemas/nfe/leiauteNFe_v4.00.xsd"),
-    ),
-    (
-        "xmldsig-core-schema_v1.01.xsd",
-        include_bytes!("../resources/fiscal/schemas/nfe/xmldsig-core-schema_v1.01.xsd"),
-    ),
-    (
-        "tiposBasico_v4.00.xsd",
-        include_bytes!("../resources/fiscal/schemas/nfe/tiposBasico_v4.00.xsd"),
-    ),
-    (
-        "DFeTiposBasicos_v1.00.xsd",
-        include_bytes!("../resources/fiscal/schemas/nfe/DFeTiposBasicos_v1.00.xsd"),
-    ),
-    (
-        "procNFe_v4.00.xsd",
-        include_bytes!("../resources/fiscal/schemas/nfe/procNFe_v4.00.xsd"),
-    ),
-];
+include!("fiscal_schema_files.rs");
 
 fn bundled_schemas(data_dir: &Path) -> Result<std::path::PathBuf, String> {
     use sha2::{Digest, Sha256};
@@ -46,6 +21,9 @@ fn bundled_schemas(data_dir: &Path) -> Result<std::path::PathBuf, String> {
     std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     for (name, bytes) in SCHEMAS {
         let path = directory.join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
         match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -63,74 +41,13 @@ fn bundled_schemas(data_dir: &Path) -> Result<std::path::PathBuf, String> {
     Ok(directory)
 }
 
-#[derive(Debug, PartialEq)]
-enum DocumentKind {
-    Nfe,
-    Nfce,
-}
-impl DocumentKind {
-    fn model(&self) -> u16 {
-        match self {
-            Self::Nfe => 55,
-            Self::Nfce => 65,
-        }
-    }
-}
-
 pub fn status() -> Value {
-    json!({"supported":true,"configured":true,"engine":"Rust + libxml2 2.15.4 embarcada",
-        "models":[55,65],"message":"DANFE e validação XSD de NF-e e NFC-e disponíveis localmente, sem instalação adicional."})
+    json!({"supported":true,"configured":true,"engine":"Rust + libxml2 estática","models":[55,65,57],"pdf_models":[55,65],"message":"NF-e/NFC-e: PDF e XSD embarcados. CT-e 4.00: importação e XSD; DACTE ainda não disponível."})
 }
 
-fn identify(xml: &str) -> Result<(DocumentKind, bool), String> {
-    if xml.len() > 8 * 1024 * 1024 || xml.contains('\0') {
-        return Err("XML inválido ou maior que 8 MiB.".into());
-    }
-    let mut reader = quick_xml::Reader::from_str(xml);
-    let (mut nfe, mut info, mut depth, mut processed) = (0, 0, 0, false);
-    loop {
-        match reader.read_event().map_err(|_| "XML malformado.")? {
-            quick_xml::events::Event::DocType(_) => {
-                return Err("DTD e entidades externas não são permitidas.".into())
-            }
-            quick_xml::events::Event::Start(e) => {
-                depth += 1;
-                if depth > 128 {
-                    return Err("XML excede a profundidade permitida.".into());
-                }
-                match e.local_name().as_ref() {
-                    b"nfeProc" => processed = true,
-                    b"NFe" => nfe += 1,
-                    b"infNFe" => {
-                        info += 1;
-                        let version = e
-                            .try_get_attribute("versao")
-                            .map_err(|_| "Versão XML inválida.")?;
-                        if version.as_ref().map(|v| v.value.as_ref()) != Some(b"4.00".as_slice()) {
-                            return Err("Versão de documento ainda não suportada. NF-e e NFC-e devem usar o leiaute 4.00.".into());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            quick_xml::events::Event::End(_) => depth -= 1,
-            quick_xml::events::Event::Eof => break,
-            _ => {}
-        }
-    }
-    if nfe != 1 || info != 1 {
-        return Err("Informe um XML completo de NF-e ou NFC-e. Resumos e outros documentos fiscais não possuem renderizador nesta versão.".into());
-    }
-    let parsed = crate::manifestador::parse_nfe_xml(xml)?;
-    if parsed.chave.len() != 44 || !parsed.chave.bytes().all(|c| c.is_ascii_alphanumeric()) {
-        return Err("Chave de acesso inválida.".into());
-    }
-    let kind = match &parsed.chave[20..22] {
-        "55" => DocumentKind::Nfe,
-        "65" => DocumentKind::Nfce,
-        _ => return Err("Modelo fiscal ainda não suportado para PDF/XSD.".into()),
-    };
-    Ok((kind, processed))
+fn identify(xml: &str) -> Result<(crate::fiscal_document::Kind, bool), String> {
+    let doc = crate::fiscal_document::identify(xml)?;
+    Ok((doc.kind, doc.processed))
 }
 
 fn run(xml: &str, data_dir: &Path, pdf: bool) -> Result<Value, String> {
@@ -139,7 +56,9 @@ fn run(xml: &str, data_dir: &Path, pdf: bool) -> Result<Value, String> {
         .lock()
         .map_err(|_| "Motor fiscal indisponível após falha anterior.")?;
     let schemas = bundled_schemas(data_dir)?;
-    let schema = if processed {
+    let schema = if kind == crate::fiscal_document::Kind::Cte {
+        "cte/cte-package_v4.00.xsd"
+    } else if processed {
         "procNFe_v4.00.xsd"
     } else {
         "nfe_v4.00.xsd"
@@ -149,6 +68,9 @@ fn run(xml: &str, data_dir: &Path, pdf: bool) -> Result<Value, String> {
         return Ok(
             json!({"valid":true,"model":kind.model(),"engine":"libxml2 2.15.4 estática","schema":schema,"message":"XML aprovado nos schemas embarcados. Assinatura criptográfica e situação atual na SEFAZ não foram verificadas."}),
         );
+    }
+    if kind == crate::fiscal_document::Kind::Cte {
+        return Err("CT-e requer DACTE. A geração de DACTE ainda não está implementada; o XML foi validado, mas nenhum DANFE será produzido para CT-e.".into());
     }
     let bytes = danfe::render_default(xml)
         .map_err(|e| format!("Falha ao gerar documento auxiliar: {e}"))?;
@@ -214,6 +136,26 @@ mod tests {
     use super::*;
     const NFE: &str = include_str!("../../tests/fiscal/nfe-homologacao.xml");
     const NFCE: &str = include_str!("../../tests/fiscal/nfce-homologacao.xml");
+    #[test]
+    fn cte_validates_own_schemas_and_never_renders_danfe() {
+        let dir = std::env::temp_dir().join(format!("cte-test-{}", uuid::Uuid::new_v4()));
+        let xml = include_str!("../../tests/fiscal/cte-homologacao.xml");
+        assert_eq!(run(xml, &dir, false).unwrap()["model"], 57);
+        assert!(run(xml, &dir, true).unwrap_err().contains("DACTE"));
+        assert!(run(&xml.replace("<mod>57</mod>", "<mod>55</mod>"), &dir, false).is_err());
+        let query = crate::manifestador::distribution_request_xml(
+            "11222333000181",
+            "SP",
+            "homologation",
+            "consChNFe",
+            "35261011222333000181550010000000011624575520",
+        )
+        .unwrap();
+        let schemas = bundled_schemas(&dir).unwrap();
+        manifestador_fiscal_xml::validate(&query, &schemas.join("distDFeInt_v1.01.xsd")).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn embedded_real_xml_validation_and_pdf_both_models() {
         let dir = std::env::temp_dir().join(format!("fiscal-real-{}", uuid::Uuid::new_v4()));

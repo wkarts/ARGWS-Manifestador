@@ -272,6 +272,9 @@ pub fn manifestador_obter_notas(
             imported += 1;
         }
     }
+    if mode == "native" {
+        manifestador::commit_distribution_cursor(&conn, company_id, &response)?;
+    }
     Ok(
         json!({"ok": true, "mode": mode, "imported": imported, "message": format!("{imported} documento(s) recebido(s) pela integração {mode}. ")}),
     )
@@ -303,8 +306,8 @@ pub fn manifestador_download(
         .optional()
         .map_err(|err| format!("Falha ao localizar NF-e para download: {err}"))?
         .ok_or_else(|| "NF-e não pertence à empresa ativa.".to_string())?;
-    if chave.as_bytes().get(20..22) == Some(b"65") {
-        return Err("Importe o XML completo da NFC-e. A distribuição de NF-e por NSU não se aplica a esse documento.".into());
+    if chave.as_bytes().get(20..22) != Some(b"55") {
+        return Err("Importe o XML completo deste documento. O serviço nativo de distribuição implementado é exclusivo de NF-e modelo 55.".into());
     }
     let request = json!({"empresa_id": company_id, "nota_id": nota_id, "chave": chave});
     if let Some(response) = manifestador::call_provider(&conn, "download", &request)? {
@@ -346,7 +349,7 @@ pub fn manifestador_manifestar(
     manifestador::ensure_manifestation_model(&conn, nota_id)?;
     let request = json!({"empresa_id": company_id, "nota_id": nota_id, "chave": chave, "evento": evento, "justificativa": justificativa});
     if let Some(response) = manifestador::call_provider(&conn, "manifestar", &request)? {
-        let protocol = response.get("protocolo").and_then(Value::as_str);
+        let protocol = manifestador::manifestation_protocol(&response)?;
         let result = manifestador::update_manifestation(
             &conn,
             nota_id,

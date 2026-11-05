@@ -842,9 +842,64 @@ fn path_value(values: &HashMap<String, String>, suffixes: &[&str]) -> String {
         .unwrap_or_default()
 }
 
+fn parse_cte_xml(xml: &str) -> Result<ParsedNfe, String> {
+    let document = crate::fiscal_document::identify(xml)?;
+    if document.kind != crate::fiscal_document::Kind::Cte {
+        return Err("XML não é CT-e modelo 57.".into());
+    }
+    let values = xml_text_values(xml)?;
+    let get = |suffix: &str| path_value(&values, &[suffix]);
+    if get("/ide/mod") != "57" {
+        return Err("Modelo do CT-e incompatível com a chave.".into());
+    }
+    Ok(ParsedNfe {
+        chave: document.key,
+        numero: get("/ide/nCT").parse().unwrap_or_default(),
+        serie: get("/ide/serie").parse().unwrap_or_default(),
+        cnpj: normalize_document(&get("/emit/CNPJ")),
+        nome: get("/emit/xNome"),
+        ie: get("/emit/IE"),
+        emissao: get("/ide/dhEmi"),
+        valor: parse_decimal(Some(&get("/vPrest/vTPrest"))),
+        tipo: "CTe".into(),
+        ambiente: if get("/ide/tpAmb") == "2" {
+            "homologation"
+        } else {
+            "production"
+        }
+        .into(),
+        protocolo: get("/protCTe/infProt/nProt"),
+        endereco: get("/enderEmit/xLgr"),
+        endereco_numero: get("/enderEmit/nro"),
+        endereco_complemento: get("/enderEmit/xCpl"),
+        endereco_bairro: get("/enderEmit/xBairro"),
+        endereco_cep: get("/enderEmit/CEP"),
+        endereco_cidade: get("/enderEmit/xMun"),
+        endereco_codmunicipio: get("/enderEmit/cMun"),
+        telefone: get("/enderEmit/fone"),
+        ..ParsedNfe::default()
+    })
+}
+
 pub fn parse_nfe_xml(xml: &str) -> Result<ParsedNfe, String> {
     if xml.trim().is_empty() || xml.len() > 8 * 1024 * 1024 {
         return Err("O XML está vazio ou excede 8 MiB.".to_string());
+    }
+    let mut probe = Reader::from_str(xml);
+    loop {
+        match probe.read_event().map_err(|e| e.to_string())? {
+            Event::DocType(_) => return Err("DTD não é permitido em XML fiscal.".into()),
+            Event::Start(e) => match e.local_name().as_ref() {
+                b"CTe" | b"cteProc" => return parse_cte_xml(xml),
+                b"NFe" | b"nfeProc" => break,
+                _ => {
+                    crate::fiscal_document::identify(xml)?;
+                    return Err("Documento não suportado para importação.".into());
+                }
+            },
+            Event::Eof => return Err("XML sem documento fiscal.".into()),
+            _ => {}
+        }
     }
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
@@ -1098,11 +1153,13 @@ pub fn import_summary(
             .to_string()
         });
     let tipo_raw = object_string(object, &["tipo", "tpNF", "TIPO"]);
-    let tipo = match tipo_raw.trim() {
-        "0" => "Entrada".to_string(),
-        "1" => "Saída".to_string(),
-        "" => "NFe".to_string(),
-        value => value.to_string(),
+    let tipo = match (chave.as_bytes().get(20..22), tipo_raw.trim()) {
+        (Some(b"57"), _) => "CTe".to_string(),
+        (Some(b"65"), _) => "NFCe".to_string(),
+        (_, "0") => "Entrada".to_string(),
+        (_, "1") => "Saída".to_string(),
+        (_, "") => "NFe".to_string(),
+        (_, value) => value.to_string(),
     };
     let situacao_raw = object_string(object, &["situacao", "cSitDFe", "SITUACAO"]);
     let situacao = match situacao_raw.trim() {
@@ -1291,10 +1348,10 @@ pub fn summary(conn: &Connection, empresa_id: Option<i64>) -> Result<Value, Stri
         )
     }
     .map_err(|err| format!("Falha ao contar downloads: {err}"))?;
-    let manifested: i64 = if let Some(id) = empresa_id { conn.query_row(&format!("SELECT COUNT(*) FROM manifestador_notas{condition} AND substr(chave,21,2)<>'65' AND manifestacao NOT IN ('N', '')"), [id], |row| row.get(0)) } else { conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE substr(chave,21,2)<>'65' AND manifestacao NOT IN ('N', '')", [], |row| row.get(0)) }.map_err(|err| format!("Falha ao contar manifestações: {err}"))?;
+    let manifested: i64 = if let Some(id) = empresa_id { conn.query_row(&format!("SELECT COUNT(*) FROM manifestador_notas{condition} AND substr(chave,21,2)='55' AND manifestacao NOT IN ('N', '')"), [id], |row| row.get(0)) } else { conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE substr(chave,21,2)='55' AND manifestacao NOT IN ('N', '')", [], |row| row.get(0)) }.map_err(|err| format!("Falha ao contar manifestações: {err}"))?;
     let eligible:i64 = if let Some(id)=empresa_id {
-        conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE empresa_id=?1 AND substr(chave,21,2)<>'65'",[id],|r|r.get(0))
-    } else {conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE substr(chave,21,2)<>'65'",[],|r|r.get(0))}.map_err(|e|e.to_string())?;
+        conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE empresa_id=?1 AND substr(chave,21,2)='55'",[id],|r|r.get(0))
+    } else {conn.query_row("SELECT COUNT(*) FROM manifestador_notas WHERE substr(chave,21,2)='55'",[],|r|r.get(0))}.map_err(|e|e.to_string())?;
     Ok(
         json!({"total": total, "downloaded": downloaded, "manifested": manifested, "pending": eligible - manifested, "manifestation_eligible":eligible}),
     )
@@ -1503,10 +1560,29 @@ pub fn ensure_manifestation_model(conn: &Connection, note_id: i64) -> Result<(),
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
-    if key.as_bytes().get(20..22) == Some(b"65") {
-        return Err("NFC-e não possui manifestação do destinatário de NF-e. XML, validação e DANFE NFC-e permanecem disponíveis.".into());
+    if key.as_bytes().get(20..22) != Some(b"55") {
+        return Err("Manifestação do destinatário de NF-e se aplica somente ao modelo 55. Outros documentos possuem eventos e serviços próprios.".into());
     }
     Ok(())
+}
+
+pub fn manifestation_protocol(response: &Value) -> Result<Option<&str>, String> {
+    if response.get("ok").and_then(Value::as_bool) == Some(false)
+        || response.get("success").and_then(Value::as_bool) == Some(false)
+    {
+        return Err("O adaptador recusou a manifestação; situação fiscal preservada.".into());
+    }
+    if let Some(code) = response.get("cStat") {
+        let code = value_string(Some(code));
+        if code != "135" {
+            return Err(format!("Evento sem confirmação de vínculo fiscal (cStat {code}). Situação preservada; consulte o retorno do serviço."));
+        }
+    }
+    Ok(response
+        .get("protocolo")
+        .or_else(|| response.get("nProt"))
+        .and_then(Value::as_str)
+        .filter(|v| !v.trim().is_empty()))
 }
 
 pub fn update_manifestation(
@@ -1533,6 +1609,10 @@ pub fn update_manifestation(
         _ => return Err("Tipo de manifestação inválido.".to_string()),
     };
     let now = Utc::now().to_rfc3339();
+    if protocol.is_none_or(|v| v.trim().is_empty()) {
+        add_log(conn,note_id,1,&format!("Intenção local: {label}. Sem protocolo de envio/registro fiscal; situação não alterada."))?;
+        return note_json(conn, note_id);
+    }
     conn.execute("UPDATE manifestador_notas SET manifestacao = ?1, situacao = 'manifestada_local', protocolo = COALESCE(?2, protocolo), updated_at = ?3 WHERE id = ?4", params![code, protocol.filter(|value| !value.trim().is_empty()), now, note_id]).map_err(|err| format!("Falha ao registrar manifestação: {err}"))?;
     add_log(
         conn,
@@ -1574,6 +1654,10 @@ pub fn download_note(
     } else {
         return Err("Esta NF-e ainda não possui XML completo para download.".to_string());
     };
+    let parsed = parse_nfe_xml(&xml)?;
+    if parsed.chave != chave {
+        return Err("O XML recebido não corresponde à chave do documento selecionado.".into());
+    }
     let configured_dir: Option<String> = conn.query_row("SELECT COALESCE(copia_xml_path, xml_path) FROM manifestador_empresa_config WHERE empresa_id = ?1", [empresa_id], |row| row.get(0)).optional().map_err(|err| format!("Falha ao consultar diretório de XML: {err}"))?.flatten();
     let target_dir = configured_dir
         .filter(|value| !value.trim().is_empty())
@@ -2261,7 +2345,7 @@ fn parse_distribution_response(xml: &str) -> Result<Value, String> {
         }
     }
     Ok(json!({
-        "ok": matches!(path_value(&values, &["/cStat"]).as_str(), "" | "137" | "138"),
+        "ok": matches!(path_value(&values, &["/cStat"]).as_str(), "137" | "138"),
         "cStat": path_value(&values, &["/cStat"]),
         "xMotivo": path_value(&values, &["/xMotivo"]),
         "ultNSU": path_value(&values, &["/ultNSU"]),
@@ -2391,6 +2475,69 @@ fn native_company_config(
     ))
 }
 
+#[cfg(any(feature = "desktop", test))]
+pub(crate) fn distribution_request_xml(
+    document: &str,
+    uf: &str,
+    environment: &str,
+    query: &str,
+    value: &str,
+) -> Result<String, String> {
+    if !document.bytes().all(|b| b.is_ascii_digit()) || !matches!(document.len(), 11 | 14) {
+        return Err("CPF/CNPJ da empresa inválido para distribuição.".into());
+    }
+    if uf_code(uf) == 0 {
+        return Err("UF da empresa inválida.".into());
+    }
+    let actor = if document.len() == 14 { "CNPJ" } else { "CPF" };
+    let selector = match query {
+        "distNSU" | "consNSU" => {
+            if value.len() > 15 || value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+                return Err("NSU inválido.".into());
+            }
+            let nsu = value.parse::<u64>().map_err(|_| "NSU inválido.")?;
+            let field = if query == "distNSU" { "ultNSU" } else { "NSU" };
+            format!("<{query}><{field}>{nsu:015}</{field}></{query}>")
+        }
+        "consChNFe" => {
+            if value.len() != 44
+                || !value.bytes().all(|b| b.is_ascii_alphanumeric())
+                || &value[20..22] != "55"
+            {
+                return Err("Chave de NF-e inválida.".into());
+            }
+            format!("<consChNFe><chNFe>{value}</chNFe></consChNFe>")
+        }
+        _ => return Err("Consulta de distribuição desconhecida.".into()),
+    };
+    Ok(format!(
+        r#"<distDFeInt xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01"><tpAmb>{}</tpAmb><cUFAutor>{:02}</cUFAutor><{actor}>{document}</{actor}>{selector}</distDFeInt>"#,
+        environment_code(environment),
+        uf_code(uf)
+    ))
+}
+
+/// Advance only after every document in the batch has been imported successfully.
+pub fn commit_distribution_cursor(
+    conn: &Connection,
+    company: i64,
+    response: &Value,
+) -> Result<(), String> {
+    let nsu = response
+        .get("ultNSU")
+        .and_then(Value::as_str)
+        .ok_or("Resposta sem último NSU.")?;
+    if nsu.is_empty() || nsu.len() > 15 || !nsu.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("Último NSU inválido.".into());
+    }
+    conn.execute(
+        "UPDATE manifestador_empresa_config SET nsu=?1,updated_at=?2 WHERE empresa_id=?3 AND CAST(COALESCE(nsu,'0') AS INTEGER)<=CAST(?1 AS INTEGER)",
+        params![nsu, Utc::now().to_rfc3339(), company],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg(feature = "desktop")]
 fn native_distribution_request(
     conn: &Connection,
@@ -2431,31 +2578,23 @@ fn native_distribution_request(
         &soap,
         timeout,
     )?;
-    parse_distribution_response(&response)
+    let result = parse_distribution_response(&response)?;
+    if result.get("ok").and_then(Value::as_bool) != Some(true) {
+        return Err(format!(
+            "Distribuição SEFAZ recusada ({}): {}",
+            value_string(result.get("cStat")),
+            value_string(result.get("xMotivo"))
+        ));
+    }
+    Ok(result)
 }
 
 #[cfg(feature = "desktop")]
 pub fn native_obter_notas(conn: &Connection, empresa_id: i64) -> Result<Value, String> {
     let (cnpj, _certificate_path, _certificate_password, uf, environment, nsu, _url, _timeout) =
         native_company_config(conn, empresa_id)?;
-    let ult_nsu = nsu.trim().parse::<u64>().unwrap_or_default();
-    let inner = format!(
-        r#"<distDFeInt xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01"><tpAmb>{}</tpAmb><cUFAutor>{:02}</cUFAutor><CNPJ>{cnpj}</CNPJ><distNSU><ultNSU>{ult_nsu:015}</ultNSU></distNSU></distDFeInt>"#,
-        environment_code(&environment),
-        uf_code(&uf),
-    );
+    let inner = distribution_request_xml(&cnpj, &uf, &environment, "distNSU", nsu.trim())?;
     let result = native_distribution_request(conn, empresa_id, &inner)?;
-    if let Some(ult_nsu) = result
-        .get("ultNSU")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-    {
-        conn.execute(
-            "UPDATE manifestador_empresa_config SET nsu = ?1, updated_at = ?2 WHERE empresa_id = ?3",
-            params![ult_nsu, Utc::now().to_rfc3339(), empresa_id],
-        )
-        .map_err(|err| format!("Falha ao atualizar NSU da empresa: {err}"))?;
-    }
     Ok(result)
 }
 
@@ -2478,12 +2617,9 @@ pub fn native_download_note(
             |row| Ok((row.get(0)?,)),
         )
         .map_err(|err| format!("Falha ao localizar NF-e para download SEFAZ: {err}"))?;
-    let (_cnpj, _certificate_path, _certificate_password, _uf, environment, _nsu, _url, _timeout) =
+    let (cnpj, _certificate_path, _certificate_password, uf, environment, _nsu, _url, _timeout) =
         native_company_config(conn, empresa_id)?;
-    let inner = format!(
-        r#"<consChNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01"><tpAmb>{}</tpAmb><xServ>CONSULTAR NFE</xServ><chNFe>{chave}</chNFe></consChNFe>"#,
-        environment_code(&environment),
-    );
+    let inner = distribution_request_xml(&cnpj, &uf, &environment, "consChNFe", &chave)?;
     let result = native_distribution_request(conn, empresa_id, &inner)?;
     let documents = result
         .get("documentos")
@@ -2528,12 +2664,12 @@ fn distribution_summary_from_xml(xml: &str, nsu: i64) -> Result<Map<String, Valu
     let values = xml_text_values(xml)?;
     let has_summary_root = values.keys().any(|key| {
         key.split('/')
-            .any(|part| matches!(part, "resNFe" | "resEvento" | "resCTe" | "resMDFe"))
+            .any(|part| matches!(part, "resNFe" | "resCTe"))
     });
     if !has_summary_root {
         return Err("O XML recebido não é um resumo de distribuição NF-e.".to_string());
     }
-    let chave = path_value(&values, &["/chNFe", "/chDFe"]);
+    let chave = path_value(&values, &["/chNFe", "/chCTe", "/chDFe"]);
     if chave.trim().is_empty() {
         return Err("O resumo XML recebido não contém a chave de acesso.".to_string());
     }
@@ -2562,12 +2698,13 @@ fn xml_is_distribution_summary(xml: &str) -> Result<bool, String> {
     let values = xml_text_values(xml)?;
     Ok(values.keys().any(|key| {
         key.split('/')
-            .any(|part| matches!(part, "resNFe" | "resEvento" | "resCTe" | "resMDFe"))
+            .any(|part| matches!(part, "resNFe" | "resCTe"))
     }))
 }
 
 /// Importa um documento retornado por um adaptador ou pela consulta nativa.
-/// A DistribuicaoDFe pode entregar XML completo, resumo `resNFe`/`resEvento`
+/// A DistribuicaoDFe pode entregar XML completo e resumos. Eventos não são notas;
+/// resumos `resNFe`/`resCTe` são importados sem sobrescrever XML completo com eventos.
 /// compactado em `docZip` ou um objeto JSON já normalizado pelo adaptador.
 pub fn import_provider_document(
     conn: &mut Connection,
@@ -2760,6 +2897,9 @@ pub fn automatic_cycle(conn: &mut Connection, data_dir: &Path) -> Result<Value, 
             }
             company_imported += 1;
         }
+        if !external_provider_configured {
+            commit_distribution_cursor(conn, company_id, &response)?;
+        }
         conn.execute(
             "UPDATE manifestador_empresa_config SET data_manifestacao = ?1, updated_at = ?1 WHERE empresa_id = ?2",
             params![Utc::now().to_rfc3339(), company_id],
@@ -2818,6 +2958,78 @@ mod tests {
         super::migrate(&conn).unwrap();
         super::ensure_company_configs(&conn).unwrap();
         conn
+    }
+
+    #[test]
+    fn cte_import_preserves_model_and_local_intent_does_not_manifest() {
+        assert!(
+            super::manifestation_protocol(&serde_json::json!({"ok":false,"protocolo":"1"}))
+                .is_err()
+        );
+        assert!(
+            super::manifestation_protocol(&serde_json::json!({"cStat":573,"protocolo":"1"}))
+                .is_err()
+        );
+        assert_eq!(
+            super::manifestation_protocol(&serde_json::json!({"cStat":135,"protocolo":"123"}))
+                .unwrap(),
+            Some("123")
+        );
+        let mut conn = company_fixture();
+        super::import_xml(
+            &mut conn,
+            1,
+            include_str!("../../tests/fiscal/cte-homologacao.xml"),
+            0,
+            None,
+        )
+        .unwrap();
+        let cte: i64 = conn
+            .query_row(
+                "SELECT id FROM manifestador_notas WHERE tipo='CTe'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(super::ensure_manifestation_model(&conn, cte).is_err());
+        assert_eq!(super::summary(&conn, Some(1)).unwrap()["pending"], 0);
+        super::import_xml(
+            &mut conn,
+            1,
+            include_str!("../../tests/fiscal/nfe-homologacao.xml"),
+            0,
+            None,
+        )
+        .unwrap();
+        let nfe: i64 = conn
+            .query_row(
+                "SELECT id FROM manifestador_notas WHERE tipo='NFe'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(super::import_provider_document(&mut conn,1,&serde_json::Value::String("<resEvento><chNFe>35261011222333000181550010000000011624575520</chNFe></resEvento>".into())).is_err());
+        super::update_manifestation(&conn, nfe, "ciencia", "", None).unwrap();
+        assert_eq!(super::summary(&conn, Some(1)).unwrap()["manifested"], 0);
+        assert_eq!(super::summary(&conn, Some(1)).unwrap()["pending"], 1);
+        assert!(
+            super::commit_distribution_cursor(&conn, 1, &serde_json::json!({"ultNSU":"bad"}))
+                .is_err()
+        );
+        super::commit_distribution_cursor(
+            &conn,
+            1,
+            &serde_json::json!({"ultNSU":"000000000000123"}),
+        )
+        .unwrap();
+        let nsu: String = conn
+            .query_row(
+                "SELECT nsu FROM manifestador_empresa_config WHERE empresa_id=1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(nsu, "000000000000123");
     }
 
     #[test]

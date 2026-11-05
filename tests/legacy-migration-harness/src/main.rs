@@ -19,6 +19,8 @@ mod app_state;
 // Exercise the actual fiscal migrations and password implementation.
 #[path = "../../../src-tauri/src/manifestador.rs"]
 mod manifestador;
+#[path = "../../../src-tauri/src/fiscal_document.rs"]
+mod fiscal_document;
 #[path = "../../../src-tauri/src/smtp_settings.rs"]
 mod smtp_settings;
 #[path = "../../../src-tauri/src/security.rs"]
