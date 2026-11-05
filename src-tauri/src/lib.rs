@@ -9,6 +9,8 @@ mod db;
 mod legacy_data;
 mod migrations;
 mod manifestador;
+mod smtp_settings;
+mod fiscal_engine;
 mod models;
 mod security;
 mod runtime_config;
@@ -131,6 +133,10 @@ pub fn run() {
             commands::companies::company_delete,
             commands::companies::company_lookup_cnpj,
             commands::companies::company_lookup_ie,
+            commands::manifestador::application_smtp_get,
+            commands::manifestador::application_smtp_save,
+            commands::manifestador::manifestador_fiscal_status,
+            commands::manifestador::manifestador_fiscal_process,
             commands::manifestador::manifestador_summary,
             commands::manifestador::manifestador_config_get,
             commands::manifestador::manifestador_config_save,
@@ -270,6 +276,10 @@ pub fn run() {
             commands::companies::company_delete,
             commands::companies::company_lookup_cnpj,
             commands::companies::company_lookup_ie,
+            commands::manifestador::application_smtp_get,
+            commands::manifestador::application_smtp_save,
+            commands::manifestador::manifestador_fiscal_status,
+            commands::manifestador::manifestador_fiscal_process,
             commands::manifestador::manifestador_summary,
             commands::manifestador::manifestador_config_get,
             commands::manifestador::manifestador_config_save,

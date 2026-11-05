@@ -1611,6 +1611,27 @@ pub(crate) fn execute_command(
             }
             delete_record(&conn, "empresas", id).map(Value::Bool)
         }
+        "application_smtp_get" => crate::smtp_settings::get(&open_connection(&state.db_path)?),
+        "application_smtp_save" => {
+            crate::smtp_settings::save(&open_connection(&state.db_path)?, &get_payload(&args))
+        }
+        "manifestador_fiscal_status" => Ok(crate::fiscal_engine::status()),
+        "manifestador_fiscal_process" => {
+            let conn = open_connection(&state.db_path)?;
+            let identity = api_identity.as_ref().ok_or("Sessão não encontrada.")?;
+            let requested = get_i64(&args, "empresa_id");
+            if requested <= 0 {
+                return Err("Selecione uma empresa.".into());
+            }
+            let company = required_manifestador_company(&conn, identity, Some(requested))?;
+            crate::fiscal_engine::process(
+                &conn,
+                &state.data_dir,
+                company,
+                get_i64(&args, "nota_id"),
+                args.get("operation").and_then(Value::as_str).unwrap_or(""),
+            )
+        }
         "manifestador_summary" => {
             let conn = open_connection(&state.db_path)?;
             let identity = api_identity

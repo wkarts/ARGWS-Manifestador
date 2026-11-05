@@ -2,7 +2,7 @@ import { isNativeMobileRuntime } from "../core/runtime/RuntimeProvider";
 import { appFeatures } from "./projectConfig";
 import { entityConfigs } from "./entities";
 
-export type MenuSection = "dashboard" | "cadastro" | "sistema" | "ferramentas" | "documentacao";
+export type MenuSection = "dashboard" | "manifestador" | "cadastro" | "sistema" | "ferramentas" | "documentacao";
 
 export interface MenuItemConfig {
   title: string;
@@ -19,7 +19,8 @@ export const menuItems: MenuItemConfig[] = [
   { title: "Visão fiscal", route: "/", permission: "dashboard:view", section: "dashboard" },
 
   { title: "Empresas", route: "/empresas", permission: "empresas:view", section: "cadastro" },
-  { title: "Manifestação NF-e", route: "/manifestador", permission: "manifestador:view", feature: "manifestador", section: "dashboard", description: "Consultar, importar, manifestar, baixar e exportar NF-e destinadas." },
+  { title: "Manifestação NF-e", route: "/manifestador", permission: "manifestador:view", feature: "manifestador", section: "manifestador", description: "Consultar, importar, manifestar, baixar e exportar NF-e destinadas." },
+  { title: "SMTP global", route: "/sistema/smtp", permission: "config:view", section: "sistema", description: "Configuração de e-mail da aplicação." },
   ...Object.values(entityConfigs).map((entity) => ({
     title: entity.title,
     route: entity.route,

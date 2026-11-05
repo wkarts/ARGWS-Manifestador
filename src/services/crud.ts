@@ -413,3 +413,16 @@ export async function stopWebProxy(): Promise<GenericRecord> {
 export async function restartWebProxy(): Promise<GenericRecord> {
   return invokeCommand<GenericRecord>("web_proxy_restart");
 }
+
+export function getGlobalSmtp(sessionToken: string): Promise<GenericRecord> {
+  return invokeCommand("application_smtp_get", { session_token: sessionToken });
+}
+export function saveGlobalSmtp(sessionToken: string, payload: GenericRecord): Promise<GenericRecord> {
+  return invokeCommand("application_smtp_save", { session_token: sessionToken, payload });
+}
+export function getFiscalEngineStatus(sessionToken: string): Promise<GenericRecord> {
+  return invokeCommand("manifestador_fiscal_status", { session_token: sessionToken });
+}
+export function processFiscalNote(sessionToken: string, empresaId: number, notaId: number, operation: "validate" | "danfe"): Promise<GenericRecord> {
+  return invokeCommand("manifestador_fiscal_process", { session_token: sessionToken, empresa_id: empresaId, nota_id: notaId, operation });
+}
